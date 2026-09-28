@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import sensible from "@fastify/sensible";
+import formbody from "@fastify/formbody";
 import authPlugin from "./plugins/auth.js";
 import oauthRoutes from "./routes/oauth.js";
 import invoiceRoutes from "./routes/invoices.js";
@@ -19,6 +20,11 @@ export function buildApp() {
   });
 
   app.register(sensible);
+  // POST /oauth/token is application/x-www-form-urlencoded per OAuth2 (RFC
+  // 6749 §4.4.2) — Fastify only parses JSON out of the box, so without this
+  // every token request fails with FST_ERR_CTP_INVALID_MEDIA_TYPE before it
+  // reaches the route handler.
+  app.register(formbody);
   app.register(authPlugin);
 
   app.get("/healthz", async () => ({ status: "ok" }));
@@ -33,13 +39,18 @@ export function buildApp() {
     sendProblem(reply, problems.notFound("No route matches this path and method."));
   });
 
-  app.setErrorHandler((error: Error, request, reply) => {
+  app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => {
     request.log.error(error);
-    if (reply.statusCode < 400) reply.code(500);
+    // Trust a status code Fastify (or a plugin) already attached to the
+    // error — e.g. FST_ERR_CTP_INVALID_MEDIA_TYPE is a 415, a body-parse
+    // failure is a 400. Only default to 500 when nothing set one, so a
+    // client mistake isn't reported back as "Internal Server Error."
+    const status = error.statusCode ?? (reply.statusCode >= 400 ? reply.statusCode : 500);
+    reply.code(status);
     sendProblem(reply, {
-      status: reply.statusCode,
-      title: reply.statusCode >= 500 ? "Internal Server Error" : "Request Error",
-      detail: env.NODE_ENV === "production" ? undefined : error.message,
+      status,
+      title: status >= 500 ? "Internal Server Error" : "Request Error",
+      detail: status >= 500 && env.NODE_ENV === "production" ? undefined : error.message,
     });
   });
 
