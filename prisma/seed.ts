@@ -13,7 +13,9 @@ const prisma = new PrismaClient();
 async function main() {
   const tenantName = process.env.SEED_TENANT_NAME ?? "ABC Healthcare";
   const clientId = process.env.SEED_CLIENT_ID ?? "client_abc_healthcare";
-  const clientSecret = process.env.SEED_CLIENT_SECRET ?? randomBytes(24).toString("base64url");
+  // `||`, not `??`: an empty string in .env.example (SEED_CLIENT_SECRET=)
+  // must fall through to a generated secret, not become the literal password.
+  const clientSecret = process.env.SEED_CLIENT_SECRET || randomBytes(24).toString("base64url");
 
   const tenant = await prisma.tenant.upsert({
     where: { id: "seed-tenant" },
