@@ -14,6 +14,12 @@ const schema = z.object({
   // a prototype, but this ships a real bearer-token-issuing API, so lock it
   // down to the actual frontend origin(s) before this goes further than a demo.
   CORS_ORIGIN: z.string().default("*"),
+  // Credentials for the WelliPayPro frontend's own token proxy
+  // (POST /public/frontend-token). Held server-side only — the browser
+  // never sees a client_secret. Must match a seeded ApiCredential's
+  // clientId/secret (see prisma/seed.ts).
+  FRONTEND_CLIENT_ID: z.string().min(1, "FRONTEND_CLIENT_ID is required — set it to the seeded demo tenant's client_id"),
+  FRONTEND_CLIENT_SECRET: z.string().min(1, "FRONTEND_CLIENT_SECRET is required — set it to the seeded demo tenant's client_secret"),
 });
 
 const parsed = schema.safeParse(process.env);

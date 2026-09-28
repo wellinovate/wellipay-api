@@ -4,6 +4,7 @@ import cors from "@fastify/cors";
 import formbody from "@fastify/formbody";
 import authPlugin from "./plugins/auth.js";
 import oauthRoutes from "./routes/oauth.js";
+import publicTokenRoutes from "./routes/publicToken.js";
 import invoiceRoutes from "./routes/invoices.js";
 import familyFundingRoutes from "./routes/familyFunding.js";
 import eligibilityRoutes from "./routes/eligibility.js";
@@ -40,6 +41,7 @@ export function buildApp() {
   app.get("/healthz", async () => ({ status: "ok" }));
 
   app.register(oauthRoutes);
+  app.register(publicTokenRoutes);
   app.register(invoiceRoutes);
   app.register(familyFundingRoutes);
   app.register(eligibilityRoutes);
