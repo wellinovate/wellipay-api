@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { createInvoiceSchema } from "../schemas/invoices.js";
+import { createInvoiceSchema, listInvoicesQuerySchema } from "../schemas/invoices.js";
 import { prisma } from "../lib/prisma.js";
 import { checkIdempotency, storeIdempotentResponse } from "../lib/idempotency.js";
 import { queueEvent } from "../lib/webhooks.js";
@@ -87,6 +87,38 @@ const invoiceRoutes: FastifyPluginAsync = async (app) => {
       const responseBody = serializeInvoice(invoice);
       await storeIdempotentResponse(prisma, idem, 201, responseBody);
       return reply.code(201).header("Location", `/provider/invoices/${invoice.id}`).send(responseBody);
+    }
+  );
+
+  app.get(
+    "/provider/invoices",
+    { preHandler: app.requireScope("mobile.integration.read") },
+    async (request, reply) => {
+      const parsed = listInvoicesQuerySchema.safeParse(request.query);
+      if (!parsed.success) {
+        return sendProblem(reply, problems.badRequest(parsed.error.issues.map((i) => i.message).join("; "), "invalid_query"));
+      }
+      const tenantId = request.auth!.tenantId;
+      const { facilityRef, patientRef, status, limit, cursor } = parsed.data;
+
+      const rows = await prisma.invoice.findMany({
+        where: {
+          tenantId,
+          ...(facilityRef ? { facilityRef } : {}),
+          ...(patientRef ? { patientRef } : {}),
+          ...(status ? { status } : {}),
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+
+      const hasMore = rows.length > limit;
+      const items = (hasMore ? rows.slice(0, limit) : rows).map(serializeInvoice);
+      return reply.code(200).send({
+        items,
+        nextCursor: hasMore ? rows[limit - 1]!.id : undefined,
+      });
     }
   );
 

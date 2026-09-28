@@ -15,3 +15,11 @@ export const createInvoiceSchema = z.object({
 });
 
 export type CreateInvoiceInput = z.infer<typeof createInvoiceSchema>;
+
+export const listInvoicesQuerySchema = z.object({
+  facilityRef: z.string().max(80).optional(),
+  patientRef: z.string().max(100).optional(),
+  status: z.enum(["OPEN", "PARTIALLY_PAID", "PAID", "CANCELLED"]).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  cursor: z.string().optional(),
+});

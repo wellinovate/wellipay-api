@@ -6,6 +6,8 @@ import authPlugin from "./plugins/auth.js";
 import oauthRoutes from "./routes/oauth.js";
 import publicTokenRoutes from "./routes/publicToken.js";
 import invoiceRoutes from "./routes/invoices.js";
+import paymentRoutes from "./routes/payments.js";
+import patientRoutes from "./routes/patients.js";
 import familyFundingRoutes from "./routes/familyFunding.js";
 import eligibilityRoutes from "./routes/eligibility.js";
 import consentRoutes from "./routes/consents.js";
@@ -43,6 +45,8 @@ export function buildApp() {
   app.register(oauthRoutes);
   app.register(publicTokenRoutes);
   app.register(invoiceRoutes);
+  app.register(paymentRoutes);
+  app.register(patientRoutes);
   app.register(familyFundingRoutes);
   app.register(eligibilityRoutes);
   app.register(consentRoutes);

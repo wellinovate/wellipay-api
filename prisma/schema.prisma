@@ -31,6 +31,7 @@ model Tenant {
   fundingRequests  FamilyFundingRequest[]
   eligibilityChecks EligibilityCheck[]
   consents         FinancialConsent[]
+  payments         Payment[]
   webhookEndpoints WebhookEndpoint[]
   outboxEvents     OutboxEvent[]
   idempotencyKeys  IdempotencyRecord[]
@@ -91,6 +92,7 @@ model Invoice {
   tenant           Tenant                 @relation(fields: [tenantId], references: [id])
   fundingRequests  FamilyFundingRequest[]
   consents         FinancialConsent[]
+  payments         Payment[]
 
   // Idempotent publish: same tenant + same provider-issued invoice ref must
   // resolve to one row, independent of the Idempotency-Key mechanism (which
@@ -236,6 +238,43 @@ model ConsentPayerSplit {
   consent FinancialConsent @relation(fields: [consentId], references: [id])
 
   @@map("consent_payer_splits")
+}
+
+enum PaymentStatus {
+  SUCCESS
+  FAILED
+  PENDING
+}
+
+// One row per payment collection event against an invoice (a card charge, a
+// bank transfer, cash at the desk, an HMO remittance, ...). Distinct from
+// Invoice.paidAmountMinor, which is the running total this feeds into — the
+// invoice alone can't answer "what were the individual transactions."
+// patientRef/facilityRef are the same opaque references as elsewhere in this
+// schema; no PII is stored here either.
+model Payment {
+  id                 String        @id @default(cuid())
+  tenantId           String
+  providerPaymentRef String
+  invoiceId          String
+  patientRef         String
+  facilityRef        String
+  channel            String // e.g. "card", "bank_transfer", "ussd", "cash", "hmo_direct"
+  reference          String? // processor/channel reference (e.g. a Paystack transaction id)
+  amountMinor        BigInt
+  currency           String        @default("NGN")
+  status             PaymentStatus @default(SUCCESS)
+  occurredAt         DateTime      @default(now())
+  createdAt          DateTime      @default(now())
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@unique([tenantId, providerPaymentRef])
+  @@index([tenantId, facilityRef])
+  @@index([tenantId, patientRef])
+  @@index([tenantId, invoiceId])
+  @@map("payments")
 }
 
 // Enforces the Idempotency-Key contract: same key + same body -> replay the
