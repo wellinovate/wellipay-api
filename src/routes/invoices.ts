@@ -5,7 +5,7 @@ import { checkIdempotency, storeIdempotentResponse } from "../lib/idempotency.js
 import { queueEvent } from "../lib/webhooks.js";
 import { sendProblem, problems } from "../lib/problem.js";
 import { toMinorBigInt, toMinorNumber } from "../lib/money.js";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 const ROUTE = "POST /provider/invoices";
 
@@ -72,7 +72,7 @@ const invoiceRoutes: FastifyPluginAsync = async (app) => {
             amountMinor: toMinorBigInt(body.amountMinor),
             currency: body.currency,
             dueAt: body.dueAt ? new Date(body.dueAt) : null,
-            metadata: body.metadata ?? null,
+            metadata: body.metadata ?? Prisma.JsonNull,
           },
         });
         await queueEvent(tx, {
