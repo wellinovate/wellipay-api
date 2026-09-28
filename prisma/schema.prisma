@@ -32,6 +32,7 @@ model Tenant {
   eligibilityChecks EligibilityCheck[]
   consents         FinancialConsent[]
   payments         Payment[]
+  claims           Claim[]
   webhookEndpoints WebhookEndpoint[]
   outboxEvents     OutboxEvent[]
   idempotencyKeys  IdempotencyRecord[]
@@ -93,6 +94,7 @@ model Invoice {
   fundingRequests  FamilyFundingRequest[]
   consents         FinancialConsent[]
   payments         Payment[]
+  claims           Claim[]
 
   // Idempotent publish: same tenant + same provider-issued invoice ref must
   // resolve to one row, independent of the Idempotency-Key mechanism (which
@@ -275,6 +277,47 @@ model Payment {
   @@index([tenantId, patientRef])
   @@index([tenantId, invoiceId])
   @@map("payments")
+}
+
+enum ClaimStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  PARTIALLY_APPROVED
+  REJECTED
+}
+
+// One row per HMO/insurer claim filed against an invoice. A claim is
+// distinct from a Payment: filing one doesn't move money by itself — an
+// APPROVED or PARTIALLY_APPROVED claim is what a payment (channel
+// "hmo_direct") later settles against. patientRef/facilityRef/payerRef are
+// the same opaque references as elsewhere in this schema; no PII here.
+model Claim {
+  id                  String      @id @default(cuid())
+  tenantId            String
+  providerClaimRef    String
+  invoiceId           String
+  patientRef          String
+  facilityRef         String
+  payerRef            String // the HMO/insurer this claim was filed against
+  amountMinor         BigInt // amount claimed
+  approvedAmountMinor BigInt?
+  currency            String      @default("NGN")
+  status              ClaimStatus @default(DRAFT)
+  reason              String? // set when status is REJECTED
+  submittedAt         DateTime?
+  decidedAt           DateTime?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@unique([tenantId, providerClaimRef])
+  @@index([tenantId, facilityRef])
+  @@index([tenantId, patientRef])
+  @@index([tenantId, invoiceId])
+  @@map("claims")
 }
 
 // Enforces the Idempotency-Key contract: same key + same body -> replay the
