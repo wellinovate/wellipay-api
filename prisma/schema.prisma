@@ -1,0 +1,304 @@
+// WelliPay integration service — schema for the contract in
+// wellipaypro/docs/mobile-app-integration.md + .openapi.json
+//
+// Design notes:
+// - All money is integer minor units (kobo for NGN). Never a float column.
+// - Every externally-supplied reference (patientRef, facilityRef, sponsorRef,
+//   payerRef) is treated as opaque. No names, phone numbers, or clinical data
+//   are stored here — see the "Trust and data rules" section of the contract.
+// - tenantId is resolved server-side from the authenticated credential on
+//   every request; it is never read from the request body.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// One row per organization issued API credentials — a provider backend,
+// or (later) another integration consumer. Matches "tenant" throughout
+// the contract docs.
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  credentials      ApiCredential[]
+  invoices         Invoice[]
+  fundingRequests  FamilyFundingRequest[]
+  eligibilityChecks EligibilityCheck[]
+  consents         FinancialConsent[]
+  webhookEndpoints WebhookEndpoint[]
+  outboxEvents     OutboxEvent[]
+  idempotencyKeys  IdempotencyRecord[]
+
+  @@map("tenants")
+}
+
+// OAuth2 client-credentials client. clientSecretHash is argon2/bcrypt, never
+// plaintext. This is a minimal in-house token issuer for early development —
+// the contract's open decisions list names a real OIDC/OAuth provider as
+// something to confirm before production; swap this out then, the token
+// shape (sub, tenantId, scopes) is designed to make that swap mechanical.
+model ApiCredential {
+  id               String   @id @default(cuid())
+  tenantId         String
+  clientId         String   @unique
+  clientSecretHash String
+  scopes           String[] // e.g. ["mobile.integration.read", "mobile.integration.write"]
+  createdAt        DateTime @default(now())
+  revokedAt        DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("api_credentials")
+}
+
+enum InvoiceStatus {
+  OPEN
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+enum MobileDeliveryStatus {
+  QUEUED
+  DELIVERED
+  NOT_LINKED
+  FAILED
+}
+
+model Invoice {
+  id                  String                @id @default(cuid())
+  tenantId            String
+  providerInvoiceRef  String
+  facilityRef         String
+  patientRef          String
+  description         String
+  amountMinor         BigInt
+  currency            String                @default("NGN")
+  paidAmountMinor     BigInt                @default(0)
+  status              InvoiceStatus         @default(OPEN)
+  mobileDeliveryStatus MobileDeliveryStatus @default(QUEUED)
+  dueAt               DateTime?
+  metadata            Json?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  tenant           Tenant                 @relation(fields: [tenantId], references: [id])
+  fundingRequests  FamilyFundingRequest[]
+  consents         FinancialConsent[]
+
+  // Idempotent publish: same tenant + same provider-issued invoice ref must
+  // resolve to one row, independent of the Idempotency-Key mechanism (which
+  // guards the HTTP write itself). Belt and suspenders for a ledger.
+  @@unique([tenantId, providerInvoiceRef])
+  @@index([tenantId, facilityRef])
+  @@map("invoices")
+}
+
+enum FundingRequestStatus {
+  OPEN
+  PARTIALLY_FUNDED
+  FUNDED
+  CANCELLED
+  EXPIRED
+}
+
+model FamilyFundingRequest {
+  id                 String               @id @default(cuid())
+  tenantId           String
+  providerRequestRef String
+  invoiceId          String
+  patientRef         String
+  facilityRef        String
+  currency           String               @default("NGN")
+  status             FundingRequestStatus @default(OPEN)
+  fundedAmountMinor  BigInt               @default(0)
+  expiresAt          DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  tenant        Tenant                  @relation(fields: [tenantId], references: [id])
+  invoice       Invoice                 @relation(fields: [invoiceId], references: [id])
+  contributions FundingContribution[]
+
+  @@unique([tenantId, providerRequestRef])
+  @@map("family_funding_requests")
+}
+
+enum ContributionStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+model FundingContribution {
+  id           String              @id @default(cuid())
+  requestId    String
+  sponsorRef   String
+  amountMinor  BigInt
+  status       ContributionStatus  @default(PENDING)
+  paidAt       DateTime?
+  createdAt    DateTime            @default(now())
+
+  request FamilyFundingRequest @relation(fields: [requestId], references: [id])
+
+  @@map("funding_contributions")
+}
+
+enum EligibilityStatus {
+  PENDING
+  COMPLETE
+}
+
+enum EligibilityDecision {
+  ELIGIBLE
+  PARTIALLY_ELIGIBLE
+  INELIGIBLE
+  PENDING
+}
+
+model EligibilityCheck {
+  id                        String              @id @default(cuid())
+  tenantId                  String
+  providerRequestRef        String
+  facilityRef               String
+  patientRef                String
+  payerRef                  String
+  serviceCodes               String[]
+  requestedAt                DateTime
+  amountMinor                 BigInt?
+  currency                    String?
+  status                      EligibilityStatus   @default(PENDING)
+  decision                    EligibilityDecision @default(PENDING)
+  reasonCode                  String?
+  coveredAmountMinor           BigInt?
+  patientResponsibilityMinor   BigInt?
+  validUntil                   DateTime?
+  checkedAt                    DateTime?
+  createdAt                    DateTime            @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, providerRequestRef])
+  @@map("eligibility_checks")
+}
+
+enum ConsentStatus {
+  RECORDED
+  REVOKED
+}
+
+enum PayerType {
+  PATIENT
+  HMO
+  INSURANCE
+  FAMILY
+  FINANCING
+  CORPORATE
+}
+
+model FinancialConsent {
+  id                 String        @id @default(cuid())
+  tenantId           String
+  providerConsentRef String
+  facilityRef        String
+  patientRef         String
+  invoiceId          String
+  estimateRevision   String
+  policyVersion      String
+  acceptedAt         DateTime
+  actorRef           String?
+  status             ConsentStatus @default(RECORDED)
+  recordedAt         DateTime      @default(now())
+  revokedAt          DateTime?
+
+  tenant     Tenant                @relation(fields: [tenantId], references: [id])
+  invoice    Invoice               @relation(fields: [invoiceId], references: [id])
+  payerSplit ConsentPayerSplit[]
+
+  @@unique([tenantId, providerConsentRef])
+  @@map("financial_consents")
+}
+
+model ConsentPayerSplit {
+  id          String    @id @default(cuid())
+  consentId   String
+  payerType   PayerType
+  payerRef    String?
+  amountMinor BigInt
+  currency    String    @default("NGN")
+
+  consent FinancialConsent @relation(fields: [consentId], references: [id])
+
+  @@map("consent_payer_splits")
+}
+
+// Enforces the Idempotency-Key contract: same key + same body -> replay the
+// stored response. Same key + different body -> 409 Conflict. Keys are
+// scoped per tenant and per route so two tenants (or two endpoints) can't
+// collide.
+model IdempotencyRecord {
+  id             String   @id @default(cuid())
+  tenantId       String
+  key            String
+  route          String
+  requestHash    String
+  responseStatus Int
+  responseBody   Json
+  createdAt      DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, route, key])
+  @@map("idempotency_records")
+}
+
+// Where a tenant's provider backend receives ProviderEvent webhooks.
+model WebhookEndpoint {
+  id        String   @id @default(cuid())
+  tenantId  String
+  url       String
+  secret    String   // used as the HMAC-SHA256 signing key; store via KMS/secret manager in production, not a plain column
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("webhook_endpoints")
+}
+
+enum OutboxStatus {
+  PENDING
+  DELIVERED
+  DEAD_LETTERED
+}
+
+// Transactional outbox: every ProviderEvent is written here in the same
+// transaction as the state change that caused it, then a separate worker
+// delivers it with HMAC signing and bounded retry. This is what makes
+// "payment state is authoritative only after a verified processor callback"
+// (from the contract) survive a crash between "state changed" and "webhook sent".
+model OutboxEvent {
+  id            String       @id @default(cuid())
+  tenantId      String
+  eventId       String       @unique @default(cuid())
+  eventType     String
+  resourceRef   String
+  occurredAt    DateTime     @default(now())
+  data          Json
+  status        OutboxStatus @default(PENDING)
+  attempts      Int          @default(0)
+  nextAttemptAt DateTime     @default(now())
+  lastError     String?
+  deliveredAt   DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([status, nextAttemptAt])
+  @@map("outbox_events")
+}

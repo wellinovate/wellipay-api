@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: wellipay-api
+    runtime: node
+    plan: starter
+    buildCommand: npm ci && npm run prisma:generate && npm run build
+    startCommand: npm run prisma:migrate && npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Set manually in the Render dashboard to wellipaypro-db's Internal
+      # Connection String (Environment tab -> Add Environment Variable).
+      # Not declared here with fromDatabase because wellipaypro-db was
+      # created outside this blueprint.
+      - key: DATABASE_URL
+        sync: false
+      - key: TOKEN_SIGNING_SECRET
+        generateValue: true
+      - key: TOKEN_ISSUER
+        value: https://api.wellipay.internal
+      - key: TOKEN_AUDIENCE
+        value: wellipay-integration-service
+      - key: WEBHOOK_MAX_ATTEMPTS
+        value: "8"

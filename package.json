@@ -1,0 +1,37 @@
+{
+  "name": "wellipay-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "WelliPay integration service — server-to-server contract between provider backends and the Patient MobileApp. See docs/mobile-app-integration.md in wellipaypro for the trust rules this implements.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "prisma:migrate:dev": "prisma migrate dev",
+    "prisma:seed": "tsx prisma/seed.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@fastify/sensible": "^6.0.1",
+    "@prisma/client": "^6.1.0",
+    "argon2": "^0.41.1",
+    "fastify": "^5.1.0",
+    "fastify-plugin": "^5.0.1",
+    "jose": "^5.9.6",
+    "pino-pretty": "^13.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "prisma": "^6.1.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
