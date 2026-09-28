@@ -31,7 +31,7 @@ export function buildApp() {
   // once this is more than a demo.
   app.register(cors, {
     origin: env.CORS_ORIGIN === "*" ? true : env.CORS_ORIGIN.split(",").map((o) => o.trim()),
-    methods: ["GET", "POST", "OPTIONS"],
+    methods: ["GET", "POST", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key"],
   });
   // POST /oauth/token is application/x-www-form-urlencoded per OAuth2 (RFC
