@@ -54,7 +54,7 @@ const familyFundingRoutes: FastifyPluginAsync = async (app) => {
             patientRef: body.patientRef,
             facilityRef: body.facilityRef,
             currency: body.currency,
-            expiresAt: body.expiresAt ? new Date(body.expiresAt) : undefined,
+            expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
             contributions: {
               create: body.contributions.map((c) => ({ sponsorRef: c.sponsorRef, amountMinor: toMinorBigInt(c.amountMinor) })),
             },

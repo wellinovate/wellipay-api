@@ -71,8 +71,8 @@ const invoiceRoutes: FastifyPluginAsync = async (app) => {
             description: body.description,
             amountMinor: toMinorBigInt(body.amountMinor),
             currency: body.currency,
-            dueAt: body.dueAt ? new Date(body.dueAt) : undefined,
-            metadata: body.metadata,
+            dueAt: body.dueAt ? new Date(body.dueAt) : null,
+            metadata: body.metadata ?? null,
           },
         });
         await queueEvent(tx, {

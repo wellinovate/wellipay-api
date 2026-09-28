@@ -43,7 +43,11 @@ export function queueEvent(
       tenantId: params.tenantId,
       eventType: params.eventType,
       resourceRef: params.resourceRef,
-      data: params.data,
+      // Record<string, unknown> isn't structurally a Prisma.InputJsonValue
+      // (unknown isn't a JSON-safe type on its own) — the cast is safe here
+      // because every call site builds this from JSON-serializable data
+      // (string/number/boolean fields only; see the queueEvent() call sites).
+      data: params.data as Prisma.InputJsonValue,
     },
   });
 }

@@ -59,11 +59,11 @@ const consentRoutes: FastifyPluginAsync = async (app) => {
             estimateRevision: body.estimateRevision,
             policyVersion: body.policyVersion,
             acceptedAt: new Date(body.acceptedAt),
-            actorRef: body.actorRef,
+            actorRef: body.actorRef ?? null,
             payerSplit: {
               create: body.payerSplit.map((s) => ({
                 payerType: s.payerType,
-                payerRef: s.payerRef,
+                payerRef: s.payerRef ?? null,
                 amountMinor: toMinorBigInt(s.amountMinor),
                 currency: s.currency,
               })),
