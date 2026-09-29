@@ -35,13 +35,16 @@ const publicTokenRoutes: FastifyPluginAsync = async (app) => {
         rateLimit: {
           max: 20,
           timeWindow: "1 minute",
-          errorResponseBuilder: (_request, context) => ({
-            type: "about:blank",
-            title: "Too Many Requests",
-            status: 429,
-            detail: `Rate limit exceeded, retry in ${context.after}.`,
-            code: "rate_limited",
-          }),
+          // @fastify/rate-limit throws whatever this returns, and reads
+          // its own statusCode off that value — a plain object without
+          // one falls through to the app's generic error handler as a
+          // 500, so this has to be a real Error with `.statusCode` set,
+          // not a problem+json-shaped plain object.
+          errorResponseBuilder: (_request, context) => {
+            const err = new Error(`Rate limit exceeded, retry in ${context.after}.`) as Error & { statusCode?: number };
+            err.statusCode = context.statusCode;
+            return err;
+          },
         },
       },
     },
