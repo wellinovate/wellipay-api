@@ -13,6 +13,7 @@ import claimRoutes from "./routes/claims.js";
 import familyFundingRoutes from "./routes/familyFunding.js";
 import eligibilityRoutes from "./routes/eligibility.js";
 import consentRoutes from "./routes/consents.js";
+import webhookEndpointRoutes from "./routes/webhookEndpoints.js";
 import { sendProblem, problems } from "./lib/problem.js";
 import { env } from "./env.js";
 
@@ -32,7 +33,7 @@ export function buildApp() {
   // once this is more than a demo.
   app.register(cors, {
     origin: env.CORS_ORIGIN === "*" ? true : env.CORS_ORIGIN.split(",").map((o) => o.trim()),
-    methods: ["GET", "POST", "PATCH", "OPTIONS"],
+    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key"],
   });
   // Registered with global:false — this doesn't rate-limit every route by
@@ -58,6 +59,7 @@ export function buildApp() {
   app.register(familyFundingRoutes);
   app.register(eligibilityRoutes);
   app.register(consentRoutes);
+  app.register(webhookEndpointRoutes);
 
   app.setNotFoundHandler((request, reply) => {
     sendProblem(reply, problems.notFound("No route matches this path and method."));
