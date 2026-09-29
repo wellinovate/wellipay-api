@@ -39,6 +39,7 @@ model Tenant {
   refunds          Refund[]
   unmatchedTransactions UnmatchedTransaction[]
   staff            Staff[]
+  paymentPlans     PaymentPlan[]
 
   @@map("tenants")
 }
@@ -99,6 +100,7 @@ model Invoice {
   payments         Payment[]
   claims           Claim[]
   refunds          Refund[]
+  paymentPlans     PaymentPlan[]
 
   // Idempotent publish: same tenant + same provider-issued invoice ref must
   // resolve to one row, independent of the Idempotency-Key mechanism (which
@@ -277,6 +279,7 @@ model Payment {
   invoice Invoice  @relation(fields: [invoiceId], references: [id])
   refunds Refund[]
   unmatchedTransactions UnmatchedTransaction[]
+  paidInstallments PaymentPlanInstallment[]
 
   @@unique([tenantId, providerPaymentRef])
   @@index([tenantId, facilityRef])
@@ -489,4 +492,56 @@ model Staff {
 
   @@index([tenantId, status])
   @@map("staff")
+}
+
+enum PaymentPlanStatus {
+  ACTIVE
+  COMPLETED
+}
+
+enum PaymentPlanInstallmentStatus {
+  PENDING
+  PAID
+}
+
+// Splits an invoice's remaining balance (amountMinor - paidAmountMinor at
+// creation time) into equal monthly installments. The only invented rules
+// here are the ones a real implementation would still need product input
+// on: even split (remainder folded into the last installment so the total
+// is always exact), monthly-only cadence, no interest, no automatic
+// "missed" penalty — a plan just tracks PENDING vs PAID per installment;
+// whether an installment is overdue is a client-side read of dueAt vs now,
+// not a stored judgment.
+model PaymentPlan {
+  id            String            @id @default(cuid())
+  tenantId      String
+  invoiceId     String
+  totalMinor    BigInt
+  installmentCount Int
+  status        PaymentPlanStatus @default(ACTIVE)
+  createdAt     DateTime          @default(now())
+
+  tenant       Tenant                    @relation(fields: [tenantId], references: [id])
+  invoice      Invoice                   @relation(fields: [invoiceId], references: [id])
+  installments PaymentPlanInstallment[]
+
+  @@index([tenantId, status])
+  @@map("payment_plans")
+}
+
+model PaymentPlanInstallment {
+  id            String                       @id @default(cuid())
+  planId        String
+  seq           Int // 1-based position in the schedule
+  dueAt         DateTime
+  amountMinor   BigInt
+  status        PaymentPlanInstallmentStatus @default(PENDING)
+  paidPaymentId String?
+  paidAt        DateTime?
+
+  plan        PaymentPlan @relation(fields: [planId], references: [id])
+  paidPayment Payment?    @relation(fields: [paidPaymentId], references: [id])
+
+  @@unique([planId, seq])
+  @@map("payment_plan_installments")
 }

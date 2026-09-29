@@ -17,6 +17,7 @@ import webhookEndpointRoutes from "./routes/webhookEndpoints.js";
 import refundRoutes from "./routes/refunds.js";
 import reconciliationRoutes from "./routes/reconciliation.js";
 import staffRoutes from "./routes/staff.js";
+import paymentPlanRoutes from "./routes/paymentPlans.js";
 import { sendProblem, problems } from "./lib/problem.js";
 import { env } from "./env.js";
 
@@ -66,6 +67,7 @@ export function buildApp() {
   app.register(refundRoutes);
   app.register(reconciliationRoutes);
   app.register(staffRoutes);
+  app.register(paymentPlanRoutes);
 
   app.setNotFoundHandler((request, reply) => {
     sendProblem(reply, problems.notFound("No route matches this path and method."));
