@@ -176,7 +176,7 @@ const paymentPlanRoutes: FastifyPluginAsync = async (app) => {
             patientRef: invoice.patientRef,
             facilityRef: invoice.facilityRef,
             channel: body.channel,
-            reference: body.reference,
+            reference: body.reference ?? null,
             amountMinor: installment.amountMinor,
           },
         });
