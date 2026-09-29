@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import sensible from "@fastify/sensible";
 import cors from "@fastify/cors";
 import formbody from "@fastify/formbody";
+import rateLimit from "@fastify/rate-limit";
 import authPlugin from "./plugins/auth.js";
 import oauthRoutes from "./routes/oauth.js";
 import publicTokenRoutes from "./routes/publicToken.js";
@@ -34,6 +35,11 @@ export function buildApp() {
     methods: ["GET", "POST", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key"],
   });
+  // Registered with global:false — this doesn't rate-limit every route by
+  // default, only ones that opt in via a `config.rateLimit` block (see
+  // POST /public/frontend-token, the one unauthenticated route that hands
+  // out credentials and is worth protecting from being hammered).
+  app.register(rateLimit, { global: false });
   // POST /oauth/token is application/x-www-form-urlencoded per OAuth2 (RFC
   // 6749 §4.4.2) — Fastify only parses JSON out of the box, so without this
   // every token request fails with FST_ERR_CTP_INVALID_MEDIA_TYPE before it
