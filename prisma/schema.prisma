@@ -37,6 +37,7 @@ model Tenant {
   outboxEvents     OutboxEvent[]
   idempotencyKeys  IdempotencyRecord[]
   refunds          Refund[]
+  unmatchedTransactions UnmatchedTransaction[]
 
   @@map("tenants")
 }
@@ -274,6 +275,7 @@ model Payment {
   tenant  Tenant   @relation(fields: [tenantId], references: [id])
   invoice Invoice  @relation(fields: [invoiceId], references: [id])
   refunds Refund[]
+  unmatchedTransactions UnmatchedTransaction[]
 
   @@unique([tenantId, providerPaymentRef])
   @@index([tenantId, facilityRef])
@@ -422,4 +424,38 @@ model OutboxEvent {
 
   @@index([status, nextAttemptAt])
   @@map("outbox_events")
+}
+
+enum UnmatchedTransactionStatus {
+  UNMATCHED
+  MATCHED
+  EXCEPTION
+}
+
+// An inbound transfer/settlement the gateway or bank reported without a
+// providerPaymentRef we can tie to an invoice on our own — e.g. a bank
+// transfer that arrived with no (or an unreadable) reference. It sits here
+// until someone on the reconciliation desk either matches it to a real
+// invoice (which creates an ordinary Payment row and moves the invoice's
+// balance, exactly like any other payment) or flags it as an exception for
+// manual chase. This is never itself money moving — only the resulting
+// Payment is.
+model UnmatchedTransaction {
+  id               String                     @id @default(cuid())
+  tenantId         String
+  source           String // e.g. "bank_transfer", "pos", "gateway"
+  reference        String? // raw bank/gateway reference text, if any
+  amountMinor      BigInt
+  currency         String                     @default("NGN")
+  receivedAt       DateTime                   @default(now())
+  status           UnmatchedTransactionStatus @default(UNMATCHED)
+  matchedPaymentId String?
+  note             String? // set when flagged as an EXCEPTION
+  createdAt        DateTime                   @default(now())
+
+  tenant         Tenant   @relation(fields: [tenantId], references: [id])
+  matchedPayment Payment? @relation(fields: [matchedPaymentId], references: [id])
+
+  @@index([tenantId, status])
+  @@map("unmatched_transactions")
 }
