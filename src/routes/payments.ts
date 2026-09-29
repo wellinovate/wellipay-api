@@ -51,6 +51,31 @@ const paymentRoutes: FastifyPluginAsync = async (app) => {
         return sendProblem(reply, problems.unprocessable(`invoiceId "${body.invoiceId}" does not exist for this tenant.`, "unknown_invoice"));
       }
 
+      let contribution: { id: string; requestId: string; amountMinor: bigint; status: string } | null = null;
+      if (body.fundingContributionId) {
+        contribution = await prisma.fundingContribution.findFirst({
+          where: { id: body.fundingContributionId, request: { tenantId, invoiceId: body.invoiceId } },
+        });
+        if (!contribution) {
+          return sendProblem(
+            reply,
+            problems.unprocessable(`fundingContributionId "${body.fundingContributionId}" does not exist for this tenant/invoice.`, "unknown_funding_contribution")
+          );
+        }
+        if (contribution.status !== "PENDING") {
+          return sendProblem(reply, problems.conflict(`Funding contribution is already ${contribution.status.toLowerCase()}.`, "contribution_already_settled"));
+        }
+        if (contribution.amountMinor !== toMinorBigInt(body.amountMinor)) {
+          return sendProblem(
+            reply,
+            problems.unprocessable(
+              `Payment amount (${body.amountMinor}) does not match the pledged contribution amount (${toMinorNumber(contribution.amountMinor)}).`,
+              "amount_does_not_match_contribution"
+            )
+          );
+        }
+      }
+
       const existing = await prisma.payment.findUnique({
         where: { tenantId_providerPaymentRef: { tenantId, providerPaymentRef: body.providerPaymentRef } },
       });
@@ -92,7 +117,37 @@ const paymentRoutes: FastifyPluginAsync = async (app) => {
           data: { paymentRef: payment.id, invoiceId: invoice.id, amountMinor: body.amountMinor, channel: body.channel },
         });
 
-        return { payment, invoice: updatedInvoice };
+        let fundingRequestUpdate: { requestId: string; status: string; fundedAmountMinor: bigint } | null = null;
+        if (contribution) {
+          await tx.fundingContribution.update({
+            where: { id: contribution.id },
+            data: { status: "PAID", paidAt: new Date() },
+          });
+
+          const siblings = await tx.fundingContribution.findMany({ where: { requestId: contribution.requestId } });
+          const totalPledged = siblings.reduce((sum: bigint, c: { amountMinor: bigint }) => sum + c.amountMinor, 0n);
+          const totalPaid = siblings.reduce(
+            (sum: bigint, c: { id: string; amountMinor: bigint; status: string }) =>
+              sum + (c.id === contribution!.id ? amountMinor : c.status === "PAID" ? c.amountMinor : 0n),
+            0n
+          );
+          const newRequestStatus = totalPaid >= totalPledged ? "FUNDED" : "OPEN";
+
+          const updatedRequest = await tx.familyFundingRequest.update({
+            where: { id: contribution.requestId },
+            data: { fundedAmountMinor: totalPaid, status: newRequestStatus },
+          });
+          fundingRequestUpdate = { requestId: updatedRequest.id, status: updatedRequest.status, fundedAmountMinor: updatedRequest.fundedAmountMinor };
+
+          await queueEvent(tx, {
+            tenantId,
+            eventType: "family.contribution.updated",
+            resourceRef: updatedRequest.id,
+            data: { requestRef: updatedRequest.id, status: updatedRequest.status, fundedAmountMinor: toMinorNumber(updatedRequest.fundedAmountMinor) },
+          });
+        }
+
+        return { payment, invoice: updatedInvoice, fundingRequestUpdate };
       });
 
       const responseBody = {
@@ -102,6 +157,13 @@ const paymentRoutes: FastifyPluginAsync = async (app) => {
           paidAmountMinor: toMinorNumber(result.invoice.paidAmountMinor),
           status: result.invoice.status,
         },
+        familyFundingRequest: result.fundingRequestUpdate
+          ? {
+              requestId: result.fundingRequestUpdate.requestId,
+              status: result.fundingRequestUpdate.status,
+              fundedAmountMinor: toMinorNumber(result.fundingRequestUpdate.fundedAmountMinor),
+            }
+          : undefined,
       };
       await storeIdempotentResponse(prisma, idem, 201, responseBody);
       return reply.code(201).header("Location", `/provider/payments/${result.payment.id}`).send(responseBody);

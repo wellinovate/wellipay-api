@@ -13,6 +13,12 @@ export const createPaymentSchema = z.object({
   amountMinor: z.number().int().min(1),
   currency: z.literal("NGN"),
   occurredAt: z.string().datetime().optional(),
+  // Set when this payment is a family sponsor settling their pledged share
+  // of a family-funding request (see POST /provider/family-funding-requests).
+  // Without this, a sponsor's payment updated the invoice but had no way to
+  // mark their FundingContribution paid or advance the request's
+  // fundedAmountMinor — the two ledgers silently drifted apart.
+  fundingContributionId: z.string().min(1).optional(),
 });
 
 export type CreatePaymentInput = z.infer<typeof createPaymentSchema>;
