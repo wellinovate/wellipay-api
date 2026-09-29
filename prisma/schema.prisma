@@ -38,6 +38,7 @@ model Tenant {
   idempotencyKeys  IdempotencyRecord[]
   refunds          Refund[]
   unmatchedTransactions UnmatchedTransaction[]
+  staff            Staff[]
 
   @@map("tenants")
 }
@@ -458,4 +459,34 @@ model UnmatchedTransaction {
 
   @@index([tenantId, status])
   @@map("unmatched_transactions")
+}
+
+enum StaffStatus {
+  ACTIVE
+  DEACTIVATED
+}
+
+// A roster entry for a person on the provider's staff — who they are, what
+// role they were invited under, and which branch they're scoped to. This is
+// a directory record, not an account: there is no per-staff login or
+// session here (the whole provider backend authenticates as one shared
+// OAuth client — see ApiCredential), so `role` is not enforced against any
+// endpoint. It exists so a real invite/deactivate action has somewhere real
+// to land, the same way UnmatchedTransaction exists so a real reconciliation
+// decision has somewhere real to land.
+model Staff {
+  id         String      @id @default(cuid())
+  tenantId   String
+  name       String
+  email      String
+  role       String // free text, e.g. "Finance Manager" — no fixed role enum yet
+  branch     String? // free text branch/location label, opaque to this service
+  status     StaffStatus @default(ACTIVE)
+  invitedAt  DateTime    @default(now())
+  deactivatedAt DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, status])
+  @@map("staff")
 }
