@@ -14,6 +14,7 @@ import familyFundingRoutes from "./routes/familyFunding.js";
 import eligibilityRoutes from "./routes/eligibility.js";
 import consentRoutes from "./routes/consents.js";
 import webhookEndpointRoutes from "./routes/webhookEndpoints.js";
+import refundRoutes from "./routes/refunds.js";
 import { sendProblem, problems } from "./lib/problem.js";
 import { env } from "./env.js";
 
@@ -60,6 +61,7 @@ export function buildApp() {
   app.register(eligibilityRoutes);
   app.register(consentRoutes);
   app.register(webhookEndpointRoutes);
+  app.register(refundRoutes);
 
   app.setNotFoundHandler((request, reply) => {
     sendProblem(reply, problems.notFound("No route matches this path and method."));

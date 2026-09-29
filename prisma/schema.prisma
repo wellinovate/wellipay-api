@@ -36,6 +36,7 @@ model Tenant {
   webhookEndpoints WebhookEndpoint[]
   outboxEvents     OutboxEvent[]
   idempotencyKeys  IdempotencyRecord[]
+  refunds          Refund[]
 
   @@map("tenants")
 }
@@ -95,6 +96,7 @@ model Invoice {
   consents         FinancialConsent[]
   payments         Payment[]
   claims           Claim[]
+  refunds          Refund[]
 
   // Idempotent publish: same tenant + same provider-issued invoice ref must
   // resolve to one row, independent of the Idempotency-Key mechanism (which
@@ -269,14 +271,51 @@ model Payment {
   occurredAt         DateTime      @default(now())
   createdAt          DateTime      @default(now())
 
-  tenant  Tenant  @relation(fields: [tenantId], references: [id])
-  invoice Invoice @relation(fields: [invoiceId], references: [id])
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  invoice Invoice  @relation(fields: [invoiceId], references: [id])
+  refunds Refund[]
 
   @@unique([tenantId, providerPaymentRef])
   @@index([tenantId, facilityRef])
   @@index([tenantId, patientRef])
   @@index([tenantId, invoiceId])
   @@map("payments")
+}
+
+enum RefundStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// A request to reverse some or all of an existing Payment. The payment row
+// itself is never edited or deleted — approving a refund instead reverses
+// its effect on the invoice (paidAmountMinor decreases, status recomputes),
+// same way a real accounting ledger keeps the original entry and posts a
+// reversing one rather than mutating history.
+model Refund {
+  id                String       @id @default(cuid())
+  tenantId          String
+  providerRefundRef String
+  paymentId         String
+  invoiceId         String
+  amountMinor       BigInt
+  currency          String       @default("NGN")
+  reason            String
+  requestedBy       String
+  status            RefundStatus @default(PENDING)
+  decidedBy         String?
+  decidedAt         DateTime?
+  createdAt         DateTime     @default(now())
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  payment Payment @relation(fields: [paymentId], references: [id])
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@unique([tenantId, providerRefundRef])
+  @@index([tenantId, paymentId])
+  @@index([tenantId, status])
+  @@map("refunds")
 }
 
 enum ClaimStatus {
