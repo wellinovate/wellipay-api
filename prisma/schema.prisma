@@ -40,6 +40,7 @@ model Tenant {
   unmatchedTransactions UnmatchedTransaction[]
   staff            Staff[]
   paymentPlans     PaymentPlan[]
+  settlements      Settlement[]
 
   @@map("tenants")
 }
@@ -274,12 +275,14 @@ model Payment {
   status             PaymentStatus @default(SUCCESS)
   occurredAt         DateTime      @default(now())
   createdAt          DateTime      @default(now())
+  settlementId       String? // set once this payment is claimed into a settlement batch
 
-  tenant  Tenant   @relation(fields: [tenantId], references: [id])
-  invoice Invoice  @relation(fields: [invoiceId], references: [id])
-  refunds Refund[]
+  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  invoice    Invoice     @relation(fields: [invoiceId], references: [id])
+  refunds    Refund[]
   unmatchedTransactions UnmatchedTransaction[]
   paidInstallments PaymentPlanInstallment[]
+  settlement Settlement? @relation(fields: [settlementId], references: [id])
 
   @@unique([tenantId, providerPaymentRef])
   @@index([tenantId, facilityRef])
@@ -544,4 +547,35 @@ model PaymentPlanInstallment {
 
   @@unique([planId, seq])
   @@map("payment_plan_installments")
+}
+
+enum SettlementStatus {
+  PENDING
+  SETTLED
+}
+
+// There's no real payment-gateway integration behind this service — Payment
+// rows are written directly by whoever calls POST /provider/payments, not
+// by a Paystack/Flutterwave webhook — so there's no real "payout" to track.
+// What IS real and worth tracking: batching a facility's successful,
+// not-yet-settled payments into one settlement run, the same way a finance
+// team closes out a day's takings before it hits the bank. Creating a
+// settlement claims every eligible Payment at that facility (via
+// Payment.settlementId) so it can't be double-counted into a later batch.
+// "SETTLED" here means "confirmed received," recorded by a human — it is
+// not a real bank/processor payout confirmation.
+model Settlement {
+  id          String           @id @default(cuid())
+  tenantId    String
+  facilityRef String
+  amountMinor BigInt
+  status      SettlementStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+  settledAt   DateTime?
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  payments Payment[]
+
+  @@index([tenantId, facilityRef, status])
+  @@map("settlements")
 }
