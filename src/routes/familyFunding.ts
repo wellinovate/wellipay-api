@@ -59,6 +59,7 @@ const familyFundingRoutes: FastifyPluginAsync = async (app) => {
               create: body.contributions.map((c) => ({ sponsorRef: c.sponsorRef, amountMinor: toMinorBigInt(c.amountMinor) })),
             },
           },
+          include: { contributions: true },
         });
         await queueEvent(tx, {
           tenantId,
@@ -76,6 +77,14 @@ const familyFundingRoutes: FastifyPluginAsync = async (app) => {
         status: created.status,
         fundedAmountMinor: toMinorNumber(created.fundedAmountMinor),
         createdAt: created.createdAt.toISOString(),
+        // Without these, no client can ever discover the fundingContributionId
+        // that POST /provider/payments needs to settle a sponsor's pledge.
+        contributions: created.contributions.map((c: { id: string; sponsorRef: string; amountMinor: bigint; status: string }) => ({
+          contributionId: c.id,
+          sponsorRef: c.sponsorRef,
+          amountMinor: toMinorNumber(c.amountMinor),
+          status: c.status,
+        })),
       };
       await storeIdempotentResponse(prisma, idem, 201, responseBody);
       return reply.code(201).send(responseBody);
