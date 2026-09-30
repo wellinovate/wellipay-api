@@ -19,6 +19,7 @@ import reconciliationRoutes from "./routes/reconciliation.js";
 import staffRoutes from "./routes/staff.js";
 import paymentPlanRoutes from "./routes/paymentPlans.js";
 import settlementRoutes from "./routes/settlements.js";
+import eventRoutes from "./routes/events.js";
 import { sendProblem, problems } from "./lib/problem.js";
 import { env } from "./env.js";
 
@@ -70,6 +71,7 @@ export function buildApp() {
   app.register(staffRoutes);
   app.register(paymentPlanRoutes);
   app.register(settlementRoutes);
+  app.register(eventRoutes);
 
   app.setNotFoundHandler((request, reply) => {
     sendProblem(reply, problems.notFound("No route matches this path and method."));
