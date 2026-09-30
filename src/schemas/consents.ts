@@ -23,3 +23,9 @@ export const financialConsentRequestSchema = z.object({
 });
 
 export type FinancialConsentRequestInput = z.infer<typeof financialConsentRequestSchema>;
+
+export const listFinancialConsentsQuerySchema = z.object({
+  facilityRef: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  cursor: z.string().optional(),
+});

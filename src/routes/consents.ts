@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { financialConsentRequestSchema } from "../schemas/consents.js";
+import { financialConsentRequestSchema, listFinancialConsentsQuerySchema } from "../schemas/consents.js";
 import { prisma } from "../lib/prisma.js";
 import { checkIdempotency, storeIdempotentResponse } from "../lib/idempotency.js";
 import { queueEvent } from "../lib/webhooks.js";
@@ -8,6 +8,19 @@ import { toMinorBigInt } from "../lib/money.js";
 import type { Prisma } from "@prisma/client";
 
 const ROUTE = "POST /provider/financial-consents";
+
+function serializeConsent(row: {
+  id: string; facilityRef: string; patientRef: string; invoiceId: string; status: string; recordedAt: Date;
+}) {
+  return {
+    consentId: row.id,
+    facilityRef: row.facilityRef,
+    patientRef: row.patientRef,
+    invoiceId: row.invoiceId,
+    status: row.status,
+    recordedAt: row.recordedAt.toISOString(),
+  };
+}
 
 const consentRoutes: FastifyPluginAsync = async (app) => {
   app.post(
@@ -87,6 +100,29 @@ const consentRoutes: FastifyPluginAsync = async (app) => {
       };
       await storeIdempotentResponse(prisma, idem, 201, responseBody);
       return reply.code(201).send(responseBody);
+    }
+  );
+
+  app.get(
+    "/provider/financial-consents",
+    { preHandler: app.requireScope("mobile.integration.read") },
+    async (request, reply) => {
+      const parsed = listFinancialConsentsQuerySchema.safeParse(request.query);
+      if (!parsed.success) {
+        return sendProblem(reply, problems.badRequest(parsed.error.issues.map((i) => i.message).join("; "), "invalid_query"));
+      }
+      const tenantId = request.auth!.tenantId;
+      const { facilityRef, limit, cursor } = parsed.data;
+
+      const rows = await prisma.financialConsent.findMany({
+        where: { tenantId, ...(facilityRef ? { facilityRef } : {}) },
+        orderBy: [{ recordedAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      const hasMore = rows.length > limit;
+      const items = (hasMore ? rows.slice(0, limit) : rows).map((row: any) => serializeConsent(row));
+      return reply.code(200).send({ items, nextCursor: hasMore ? rows[limit - 1]!.id : undefined });
     }
   );
 };

@@ -1,11 +1,27 @@
 import type { FastifyPluginAsync } from "fastify";
-import { eligibilityCheckRequestSchema } from "../schemas/eligibility.js";
+import { eligibilityCheckRequestSchema, listEligibilityChecksQuerySchema } from "../schemas/eligibility.js";
 import { prisma } from "../lib/prisma.js";
 import { checkIdempotency, storeIdempotentResponse } from "../lib/idempotency.js";
 import { sendProblem, problems } from "../lib/problem.js";
 import { toMinorBigInt, toMinorNumber } from "../lib/money.js";
 
 const ROUTE = "POST /provider/eligibility-checks";
+
+function serializeEligibilityCheck(row: {
+  id: string; facilityRef: string; patientRef: string; payerRef: string; status: string;
+  decision: string; requestedAt: Date; checkedAt: Date | null; createdAt: Date;
+}) {
+  return {
+    eligibilityId: row.id,
+    facilityRef: row.facilityRef,
+    patientRef: row.patientRef,
+    payerRef: row.payerRef,
+    status: row.status,
+    decision: row.decision,
+    requestedAt: row.requestedAt.toISOString(),
+    checkedAt: (row.checkedAt ?? row.createdAt).toISOString(),
+  };
+}
 
 const eligibilityRoutes: FastifyPluginAsync = async (app) => {
   app.post(
@@ -68,6 +84,29 @@ const eligibilityRoutes: FastifyPluginAsync = async (app) => {
       };
       await storeIdempotentResponse(prisma, idem, 202, responseBody);
       return reply.code(202).send(responseBody);
+    }
+  );
+
+  app.get(
+    "/provider/eligibility-checks",
+    { preHandler: app.requireScope("mobile.integration.read") },
+    async (request, reply) => {
+      const parsed = listEligibilityChecksQuerySchema.safeParse(request.query);
+      if (!parsed.success) {
+        return sendProblem(reply, problems.badRequest(parsed.error.issues.map((i) => i.message).join("; "), "invalid_query"));
+      }
+      const tenantId = request.auth!.tenantId;
+      const { facilityRef, limit, cursor } = parsed.data;
+
+      const rows = await prisma.eligibilityCheck.findMany({
+        where: { tenantId, ...(facilityRef ? { facilityRef } : {}) },
+        orderBy: [{ requestedAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      const hasMore = rows.length > limit;
+      const items = (hasMore ? rows.slice(0, limit) : rows).map((row: any) => serializeEligibilityCheck(row));
+      return reply.code(200).send({ items, nextCursor: hasMore ? rows[limit - 1]!.id : undefined });
     }
   );
 };

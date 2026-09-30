@@ -41,6 +41,9 @@ model Tenant {
   staff            Staff[]
   paymentPlans     PaymentPlan[]
   settlements      Settlement[]
+  financingRecords FinancingRecord[]
+  partners         Partner[]
+  referrals        Referral[]
 
   @@map("tenants")
 }
@@ -102,6 +105,7 @@ model Invoice {
   claims           Claim[]
   refunds          Refund[]
   paymentPlans     PaymentPlan[]
+  financingRecords FinancingRecord[]
 
   // Idempotent publish: same tenant + same provider-issued invoice ref must
   // resolve to one row, independent of the Idempotency-Key mechanism (which
@@ -283,6 +287,7 @@ model Payment {
   unmatchedTransactions UnmatchedTransaction[]
   paidInstallments PaymentPlanInstallment[]
   settlement Settlement? @relation(fields: [settlementId], references: [id])
+  financingRecord FinancingRecord?
 
   @@unique([tenantId, providerPaymentRef])
   @@index([tenantId, facilityRef])
@@ -578,4 +583,85 @@ model Settlement {
 
   @@index([tenantId, facilityRef, status])
   @@map("settlements")
+}
+
+// There's no real lender integration behind this — no CareCred/HealthPay/
+// Sycamore API, no credit check, no disbursement webhook. What this records
+// is a fact the facility itself enters: a named lender paid the facility's
+// outstanding balance on an invoice upfront, so the invoice is settled from
+// the facility's side immediately (via a real Payment on the "financing"
+// channel) while the patient repays that lender separately, outside this
+// system entirely. termMonths is purely a facility-entered label for what
+// was agreed with the lender — it isn't tracked or enforced here.
+model FinancingRecord {
+  id          String   @id @default(cuid())
+  tenantId    String
+  invoiceId   String
+  paymentId   String   @unique
+  lenderName  String
+  termMonths  Int?
+  amountMinor BigInt
+  createdAt   DateTime @default(now())
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+  payment Payment @relation(fields: [paymentId], references: [id])
+
+  @@index([tenantId, invoiceId])
+  @@map("financing_records")
+}
+
+enum PartnerType {
+  LABORATORY
+  PHARMACY
+  IMAGING
+  SPECIALIST
+  OTHER
+}
+
+enum PartnerStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// A directory of outside labs/pharmacies/diagnostic centres a facility
+// refers patients to. No routing logic and no billing integration — this is
+// a record of who the partner is and a log of referrals sent to them,
+// nothing more.
+model Partner {
+  id        String        @id @default(cuid())
+  tenantId  String
+  name      String
+  type      PartnerType
+  status    PartnerStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  referrals Referral[]
+
+  @@index([tenantId, status])
+  @@map("partners")
+}
+
+enum ReferralStatus {
+  SENT
+  COMPLETED
+}
+
+model Referral {
+  id           String         @id @default(cuid())
+  tenantId     String
+  partnerId    String
+  facilityRef  String
+  patientRef   String
+  description  String
+  status       ReferralStatus @default(SENT)
+  createdAt    DateTime       @default(now())
+  completedAt  DateTime?
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  partner Partner @relation(fields: [partnerId], references: [id])
+
+  @@index([tenantId, status])
+  @@map("referrals")
 }
