@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
-import { createStaffSchema, listStaffQuerySchema, updateStaffStatusSchema } from "../schemas/staff.js";
+import argon2 from "argon2";
+import { createStaffSchema, listStaffQuerySchema, updateStaffStatusSchema, setStaffPasswordSchema } from "../schemas/staff.js";
 import { prisma } from "../lib/prisma.js";
 import { checkIdempotency, storeIdempotentResponse } from "../lib/idempotency.js";
 import { queueEvent } from "../lib/webhooks.js";
@@ -39,6 +40,11 @@ const staffRoutes: FastifyPluginAsync = async (app) => {
       const idem = await checkIdempotency(prisma, request, reply, CREATE_ROUTE);
       if (!idem) return;
       if (idem.replayed) return;
+
+      const existingEmail = await prisma.staff.findUnique({ where: { email: body.email } });
+      if (existingEmail) {
+        return sendProblem(reply, problems.conflict(`A staff member with email "${body.email}" already exists.`, "email_already_exists"));
+      }
 
       const created = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const row = await tx.staff.create({
@@ -124,6 +130,33 @@ const staffRoutes: FastifyPluginAsync = async (app) => {
       });
 
       return reply.code(200).send(serializeStaff(updated));
+    }
+  );
+
+  // Admin sets/resets a staff member's login password (see the schema
+  // comment). Requires the same write scope as invite/deactivate — this is
+  // a directory-management action, not something the staff member does to
+  // themselves (there's no "forgot password" flow yet).
+  app.patch(
+    "/provider/staff/:id/password",
+    { preHandler: app.requireScope("mobile.integration.write") },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const parsed = setStaffPasswordSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return sendProblem(reply, problems.badRequest(parsed.error.issues.map((i) => i.message).join("; "), "invalid_body"));
+      }
+      const tenantId = request.auth!.tenantId;
+
+      const existing = await prisma.staff.findFirst({ where: { id, tenantId } });
+      if (!existing) {
+        return sendProblem(reply, problems.notFound());
+      }
+
+      const passwordHash = await argon2.hash(parsed.data.password);
+      await prisma.staff.update({ where: { id: existing.id }, data: { passwordHash } });
+
+      return reply.code(204).send();
     }
   );
 };

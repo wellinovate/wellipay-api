@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-// Creates a staff directory entry — an invite record, not an account. See
-// the Staff model's comment: there's no per-staff login here, so `role` is
-// a free-text label the caller supplies rather than a fixed enum enforced
-// against any endpoint.
+// Creates a staff directory entry — an invite record, not an account by
+// itself. `role` stays a free-text label; there's still no per-role
+// permission enforcement, only per-staff identity (see PATCH .../password
+// and POST /staff/login below).
 export const createStaffSchema = z.object({
   name: z.string().min(1).max(120),
   email: z.string().email().max(160),
@@ -21,4 +21,12 @@ export const listStaffQuerySchema = z.object({
 
 export const updateStaffStatusSchema = z.object({
   status: z.enum(["ACTIVE", "DEACTIVATED"]),
+});
+
+// Admin action (requires the write scope, same as invite/deactivate) that
+// sets or resets a staff member's login password. There's no "forgot
+// password" email flow yet — a manager sets it here, in person or over a
+// trusted channel, and tells the staff member.
+export const setStaffPasswordSchema = z.object({
+  password: z.string().min(8).max(200),
 });

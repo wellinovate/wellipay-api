@@ -490,14 +490,22 @@ model Staff {
   tenantId   String
   name       String
   email      String
-  role       String // free text, e.g. "Finance Manager" — no fixed role enum yet
+  role       String // free text, e.g. "Finance Manager" — no fixed role enum, no per-role permission enforcement yet
   branch     String? // free text branch/location label, opaque to this service
   status     StaffStatus @default(ACTIVE)
   invitedAt  DateTime    @default(now())
   deactivatedAt DateTime?
+  // Null until a manager sets it (PATCH .../password). A staff member with
+  // no password set yet cannot log in via POST /staff/login. Email is
+  // unique platform-wide (not just per tenant) because login has no other
+  // way to know which tenant a caller belongs to before verifying who they
+  // are — a real limitation worth revisiting if this ever serves more than
+  // one facility group under one login surface.
+  passwordHash String?
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
+  @@unique([email])
   @@index([tenantId, status])
   @@map("staff")
 }
