@@ -34,6 +34,24 @@ describe("access token issue/verify round trip", () => {
     await expect(verifyAccessToken("not-a-real-jwt")).rejects.toThrow();
   });
 
+  it("carries a patientRef claim through the round trip when present", async () => {
+    const { token } = await issueAccessToken({
+      sub: "pat_acct_1",
+      tenantId: "tenant_abc",
+      scopes: ["patient.self.read", "patient.self.write"],
+      patientRef: "ref_789",
+    });
+    const claims = await verifyAccessToken(token);
+    expect(claims.patientRef).toBe("ref_789");
+  });
+
+  it("omits patientRef entirely (not a literal undefined key) for a staff/provider token", async () => {
+    const { token } = await issueAccessToken({ sub: "staff_1", tenantId: "t", scopes: ["mobile.integration.read"] });
+    const claims = await verifyAccessToken(token);
+    expect(claims.patientRef).toBeUndefined();
+    expect("patientRef" in claims).toBe(false);
+  });
+
   it("rejects a token signed with a different secret", async () => {
     // Simulates what happens if TOKEN_SIGNING_SECRET is rotated or wrong —
     // a token from the old secret must not verify against the new one.

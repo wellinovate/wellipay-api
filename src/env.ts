@@ -20,6 +20,15 @@ const schema = z.object({
   // clientId/secret (see prisma/seed.ts).
   FRONTEND_CLIENT_ID: z.string().min(1, "FRONTEND_CLIENT_ID is required — set it to the seeded demo tenant's client_id"),
   FRONTEND_CLIENT_SECRET: z.string().min(1, "FRONTEND_CLIENT_SECRET is required — set it to the seeded demo tenant's client_secret"),
+  // Clerk's secret key for the Patient MobileApp's Clerk project (Clerk
+  // dashboard → API keys). Verifies the Clerk session token a patient's
+  // phone presents to POST /patient/link and POST /patient/token — see
+  // src/lib/clerk.ts. Deliberately optional, not required like the secrets
+  // above: this is a new capability added after the API was already live in
+  // production, and making it required would crash every boot on a service
+  // that hasn't set it yet. The /patient/* routes return 503 until it's set;
+  // everything else is unaffected.
+  CLERK_SECRET_KEY: z.string().min(1).optional(),
 });
 
 const parsed = schema.safeParse(process.env);

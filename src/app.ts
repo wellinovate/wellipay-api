@@ -23,6 +23,7 @@ import eventRoutes from "./routes/events.js";
 import financingRoutes from "./routes/financingRecords.js";
 import partnerRoutes from "./routes/partners.js";
 import staffAuthRoutes from "./routes/staffAuth.js";
+import patientAuthRoutes from "./routes/patientAuth.js";
 import { sendProblem, problems } from "./lib/problem.js";
 import { env } from "./env.js";
 
@@ -95,6 +96,7 @@ export function buildApp() {
   app.register(financingRoutes);
   app.register(partnerRoutes);
   app.register(staffAuthRoutes);
+  app.register(patientAuthRoutes);
 
   app.setNotFoundHandler((request, reply) => {
     sendProblem(reply, problems.notFound("No route matches this path and method."));

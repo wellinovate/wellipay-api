@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { staffLoginSchema } from "../src/schemas/staffAuth.js";
 import { createStaffSchema, setStaffPasswordSchema } from "../src/schemas/staff.js";
 import { createPaymentSchema } from "../src/schemas/payments.js";
+import { linkPatientAccountSchema } from "../src/schemas/patientAuth.js";
 
 describe("staffLoginSchema", () => {
   it("accepts a valid email/password pair", () => {
@@ -122,5 +123,37 @@ describe("createPaymentSchema", () => {
         currency: "NGN",
       }).success
     ).toBe(false);
+  });
+});
+
+describe("linkPatientAccountSchema", () => {
+  it("accepts a well-formed invoiceRef/amountMinor pair", () => {
+    const result = linkPatientAccountSchema.safeParse({ invoiceRef: "INV-2026-0042", amountMinor: 48150 });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an empty invoiceRef", () => {
+    expect(linkPatientAccountSchema.safeParse({ invoiceRef: "", amountMinor: 48150 }).success).toBe(false);
+  });
+
+  it("rejects an invoiceRef longer than 80 characters", () => {
+    expect(linkPatientAccountSchema.safeParse({ invoiceRef: "x".repeat(81), amountMinor: 48150 }).success).toBe(false);
+  });
+
+  it("rejects a negative amount", () => {
+    expect(linkPatientAccountSchema.safeParse({ invoiceRef: "INV-1", amountMinor: -1 }).success).toBe(false);
+  });
+
+  it("accepts a zero amount — a fully-covered/no-balance invoice is still linkable", () => {
+    expect(linkPatientAccountSchema.safeParse({ invoiceRef: "INV-1", amountMinor: 0 }).success).toBe(true);
+  });
+
+  it("rejects a non-integer amount", () => {
+    expect(linkPatientAccountSchema.safeParse({ invoiceRef: "INV-1", amountMinor: 48150.5 }).success).toBe(false);
+  });
+
+  it("rejects a missing invoiceRef or amountMinor", () => {
+    expect(linkPatientAccountSchema.safeParse({ amountMinor: 48150 }).success).toBe(false);
+    expect(linkPatientAccountSchema.safeParse({ invoiceRef: "INV-1" }).success).toBe(false);
   });
 });

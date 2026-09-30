@@ -16,13 +16,23 @@ const issuer = env.TOKEN_ISSUER;
 const audience = env.TOKEN_AUDIENCE;
 
 export interface AccessTokenClaims {
-  sub: string; // clientId
+  sub: string; // clientId, staff id, or patient account id depending on issuer route
   tenantId: string;
   scopes: string[];
+  // Set only for a patient-scoped token (POST /patient/token). Its presence
+  // is what src/plugins/patientAuth.ts's requirePatientScope() checks to
+  // reject a staff/provider token on a /patient/* route and vice versa —
+  // scopes alone aren't enough since nothing stops the same scope string
+  // space from colliding later.
+  patientRef?: string;
 }
 
 export async function issueAccessToken(claims: AccessTokenClaims, expiresInSeconds = 900): Promise<{ token: string; expiresIn: number }> {
-  const token = await new SignJWT({ tenantId: claims.tenantId, scopes: claims.scopes })
+  const token = await new SignJWT({
+    tenantId: claims.tenantId,
+    scopes: claims.scopes,
+    ...(claims.patientRef ? { patientRef: claims.patientRef } : {}),
+  })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(claims.sub)
     .setIssuer(issuer)
@@ -37,8 +47,19 @@ export async function verifyAccessToken(token: string): Promise<AccessTokenClaim
   const { payload } = await jwtVerify(token, secret, { issuer, audience });
   const tenantId = payload["tenantId"];
   const scopes = payload["scopes"];
+  const patientRef = payload["patientRef"];
   if (typeof payload.sub !== "string" || typeof tenantId !== "string" || !Array.isArray(scopes)) {
     throw new Error("Malformed access token claims");
   }
-  return { sub: payload.sub, tenantId, scopes: scopes as string[] };
+  if (patientRef !== undefined && typeof patientRef !== "string") {
+    throw new Error("Malformed access token claims");
+  }
+  return {
+    sub: payload.sub,
+    tenantId,
+    scopes: scopes as string[],
+    // exactOptionalPropertyTypes forbids assigning `patientRef: undefined`
+    // directly — omit the key entirely rather than set it to undefined.
+    ...(patientRef !== undefined ? { patientRef } : {}),
+  };
 }

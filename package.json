@@ -23,6 +23,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@clerk/backend": "^3.21.1",
     "@fastify/cors": "^10.0.1",
     "@fastify/formbody": "^8.0.2",
     "@fastify/rate-limit": "^11.2.0",

@@ -34,4 +34,5 @@ export const problems = {
   conflict: (detail: string, code = "conflict") => ({ status: 409, title: "Conflict", detail, code }),
   unprocessable: (detail: string, code = "unprocessable") => ({ status: 422, title: "Unprocessable Entity", detail, code }),
   rateLimited: (detail = "Rate limit exceeded.", code = "rate_limited") => ({ status: 429, title: "Too Many Requests", detail, code }),
+  serviceUnavailable: (detail: string, code = "service_unavailable") => ({ status: 503, title: "Service Unavailable", detail, code }),
 } as const;

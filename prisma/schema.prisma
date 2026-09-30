@@ -44,6 +44,7 @@ model Tenant {
   financingRecords FinancingRecord[]
   partners         Partner[]
   referrals        Referral[]
+  patientAccounts  PatientAccount[]
 
   @@map("tenants")
 }
@@ -672,4 +673,30 @@ model Referral {
 
   @@index([tenantId, status])
   @@map("referrals")
+}
+
+// Links a Clerk-authenticated identity (from the separate Patient MobileApp)
+// to one opaque patientRef within one tenant. Distinct from the ad-hoc
+// "patient" list GET /provider/patients derives from Invoice.patientRef
+// groupings, which is a read-only aggregate for staff — this is a real
+// account row that grants a specific phone/person read (and limited write)
+// access to that patientRef's own records, via POST /patient/link and
+// POST /patient/token (src/routes/patientAuth.ts).
+//
+// clerkUserId is globally unique (not scoped per tenant) — same tradeoff
+// made for Staff.email: Clerk-token verification alone has no other signal
+// to resolve which tenant a caller belongs to before an account exists.
+// Worth revisiting if a patient could legitimately hold records at more
+// than one tenant under one Clerk identity.
+model PatientAccount {
+  id          String   @id @default(cuid())
+  tenantId    String
+  patientRef  String
+  clerkUserId String   @unique
+  linkedAt    DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, patientRef])
+  @@map("patient_accounts")
 }
