@@ -3,6 +3,7 @@ import { staffLoginSchema } from "../src/schemas/staffAuth.js";
 import { createStaffSchema, setStaffPasswordSchema } from "../src/schemas/staff.js";
 import { createPaymentSchema } from "../src/schemas/payments.js";
 import { linkPatientAccountSchema } from "../src/schemas/patientAuth.js";
+import { patientAcceptConsentSchema, patientListInvoicesQuerySchema } from "../src/schemas/patientData.js";
 
 describe("staffLoginSchema", () => {
   it("accepts a valid email/password pair", () => {
@@ -155,5 +156,56 @@ describe("linkPatientAccountSchema", () => {
   it("rejects a missing invoiceRef or amountMinor", () => {
     expect(linkPatientAccountSchema.safeParse({ amountMinor: 48150 }).success).toBe(false);
     expect(linkPatientAccountSchema.safeParse({ invoiceRef: "INV-1" }).success).toBe(false);
+  });
+});
+
+describe("patientListInvoicesQuerySchema", () => {
+  it("defaults limit to 50 with no query params", () => {
+    const result = patientListInvoicesQuerySchema.safeParse({});
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.limit).toBe(50);
+  });
+
+  it("rejects a status outside the known invoice statuses", () => {
+    expect(patientListInvoicesQuerySchema.safeParse({ status: "REFUNDED" }).success).toBe(false);
+  });
+
+  it("has no facilityRef field to filter by — a patient token is already scoped to one patientRef", () => {
+    const result = patientListInvoicesQuerySchema.safeParse({ facilityRef: "fac_1" });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data).not.toHaveProperty("facilityRef");
+  });
+});
+
+describe("patientAcceptConsentSchema", () => {
+  const validBody = {
+    providerConsentRef: "consent-1",
+    invoiceId: "inv_1",
+    estimateRevision: "rev-1",
+    policyVersion: "policy-1",
+    payerSplit: [{ payerType: "PATIENT", amountMinor: 48150, currency: "NGN" }],
+  };
+
+  it("accepts a well-formed acceptance", () => {
+    expect(patientAcceptConsentSchema.safeParse(validBody).success).toBe(true);
+  });
+
+  it("has no facilityRef or patientRef fields — those come from the invoice and the token, never the body", () => {
+    const result = patientAcceptConsentSchema.safeParse({ ...validBody, facilityRef: "fac_1", patientRef: "pat_1" });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty("facilityRef");
+      expect(result.data).not.toHaveProperty("patientRef");
+    }
+  });
+
+  it("rejects an unknown payerType", () => {
+    expect(
+      patientAcceptConsentSchema.safeParse({ ...validBody, payerSplit: [{ payerType: "CRYPTO", amountMinor: 100, currency: "NGN" }] }).success
+    ).toBe(false);
+  });
+
+  it("rejects an empty payerSplit array", () => {
+    expect(patientAcceptConsentSchema.safeParse({ ...validBody, payerSplit: [] }).success).toBe(false);
   });
 });

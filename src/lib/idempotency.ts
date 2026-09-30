@@ -31,7 +31,12 @@ export async function checkIdempotency(
   route: string
 ): Promise<IdempotencyContext | undefined> {
   const key = request.headers["idempotency-key"];
-  const tenantId = request.auth?.tenantId;
+  // Idempotency scoping only cares about the tenant, not which credential
+  // type authenticated the call — request.auth is set by requireScope()
+  // (staff/provider tokens), request.patientAuth by requirePatientScope()
+  // (patient tokens, e.g. POST /patient/financial-consents). A route only
+  // ever has one of the two set, never both.
+  const tenantId = request.auth?.tenantId ?? request.patientAuth?.tenantId;
   if (!tenantId) {
     // auth plugin should always run first; this is a defensive check.
     sendProblem(reply, problems.unauthorized());
