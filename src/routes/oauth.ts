@@ -17,38 +17,61 @@ const tokenRequestSchema = z.object({
 });
 
 const oauthRoutes: FastifyPluginAsync = async (app) => {
-  app.post("/oauth/token", async (request, reply) => {
-    const parsed = tokenRequestSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return sendProblem(reply, problems.badRequest("Expected grant_type=client_credentials with client_id, client_secret, and optional scope.", "invalid_request"));
+  app.post(
+    "/oauth/token",
+    {
+      config: {
+        // This is the one endpoint where an attacker can try arbitrary
+        // client_id/client_secret pairs — /public/frontend-token and
+        // /staff/login both already have a tighter 20/min limit than the
+        // app-wide 300/min default; this had none, which made it the
+        // weakest of the three credential-checking routes despite being
+        // the one meant for external API integrators, not just the
+        // frontend.
+        rateLimit: {
+          max: 20,
+          timeWindow: "1 minute",
+          errorResponseBuilder: (_request, context) => {
+            const err = new Error(`Rate limit exceeded, retry in ${context.after}.`) as Error & { statusCode?: number };
+            err.statusCode = context.statusCode;
+            return err;
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const parsed = tokenRequestSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return sendProblem(reply, problems.badRequest("Expected grant_type=client_credentials with client_id, client_secret, and optional scope.", "invalid_request"));
+      }
+      const { client_id, client_secret, scope } = parsed.data;
+
+      const credential = await prisma.apiCredential.findUnique({ where: { clientId: client_id } });
+      if (!credential || credential.revokedAt) {
+        return sendProblem(reply, problems.unauthorized("Unknown or revoked client_id.", "invalid_client"));
+      }
+
+      const validSecret = await argon2.verify(credential.clientSecretHash, client_secret).catch(() => false);
+      if (!validSecret) {
+        return sendProblem(reply, problems.unauthorized("Invalid client_secret.", "invalid_client"));
+      }
+
+      const requestedScopes = scope ? scope.split(" ").filter(Boolean) : credential.scopes;
+      const grantedScopes = requestedScopes.filter((s: string) => credential.scopes.includes(s));
+      if (grantedScopes.length === 0) {
+        return sendProblem(reply, problems.forbidden("Requested scope is not granted to this client.", "invalid_scope"));
+      }
+
+      const { token, expiresIn } = await issueAccessToken({ sub: credential.clientId, tenantId: credential.tenantId, scopes: grantedScopes });
+
+      return reply.code(200).send({
+        access_token: token,
+        token_type: "Bearer",
+        expires_in: expiresIn,
+        scope: grantedScopes.join(" "),
+      });
     }
-    const { client_id, client_secret, scope } = parsed.data;
-
-    const credential = await prisma.apiCredential.findUnique({ where: { clientId: client_id } });
-    if (!credential || credential.revokedAt) {
-      return sendProblem(reply, problems.unauthorized("Unknown or revoked client_id.", "invalid_client"));
-    }
-
-    const validSecret = await argon2.verify(credential.clientSecretHash, client_secret).catch(() => false);
-    if (!validSecret) {
-      return sendProblem(reply, problems.unauthorized("Invalid client_secret.", "invalid_client"));
-    }
-
-    const requestedScopes = scope ? scope.split(" ").filter(Boolean) : credential.scopes;
-    const grantedScopes = requestedScopes.filter((s: string) => credential.scopes.includes(s));
-    if (grantedScopes.length === 0) {
-      return sendProblem(reply, problems.forbidden("Requested scope is not granted to this client.", "invalid_scope"));
-    }
-
-    const { token, expiresIn } = await issueAccessToken({ sub: credential.clientId, tenantId: credential.tenantId, scopes: grantedScopes });
-
-    return reply.code(200).send({
-      access_token: token,
-      token_type: "Bearer",
-      expires_in: expiresIn,
-      scope: grantedScopes.join(" "),
-    });
-  });
+  );
 };
 
 export default oauthRoutes;
