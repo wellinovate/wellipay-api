@@ -44,11 +44,28 @@ export function buildApp() {
     methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key"],
   });
-  // Registered with global:false — this doesn't rate-limit every route by
-  // default, only ones that opt in via a `config.rateLimit` block (see
-  // POST /public/frontend-token, the one unauthenticated route that hands
-  // out credentials and is worth protecting from being hammered).
-  app.register(rateLimit, { global: false });
+  // A blanket safety net on every route — 300 requests/minute per IP by
+  // default. Before this, only POST /public/frontend-token had any limit
+  // (see its own tighter 20/min override below), which meant every
+  // money-moving write route (payments, refunds, settlements, financing,
+  // payment plans) had zero protection against being hammered. A route can
+  // still set its own tighter `config.rateLimit` (as the token route does)
+  // to override this default.
+  app.register(rateLimit, {
+    global: true,
+    max: 300,
+    timeWindow: "1 minute",
+    errorResponseBuilder: (_request, context) => {
+      // @fastify/rate-limit throws whatever this returns, and reads its own
+      // statusCode off that value — a plain object without one falls
+      // through to the app's generic error handler as a 500, so this has to
+      // be a real Error with `.statusCode` set, not a problem+json-shaped
+      // plain object.
+      const err = new Error(`Rate limit exceeded, retry in ${context.after}.`) as Error & { statusCode?: number };
+      err.statusCode = context.statusCode;
+      return err;
+    },
+  });
   // POST /oauth/token is application/x-www-form-urlencoded per OAuth2 (RFC
   // 6749 §4.4.2) — Fastify only parses JSON out of the box, so without this
   // every token request fails with FST_ERR_CTP_INVALID_MEDIA_TYPE before it
