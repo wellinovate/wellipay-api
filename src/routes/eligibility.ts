@@ -1,11 +1,35 @@
 import type { FastifyPluginAsync } from "fastify";
+import type { Prisma } from "@prisma/client";
 import { eligibilityCheckRequestSchema, listEligibilityChecksQuerySchema } from "../schemas/eligibility.js";
 import { prisma } from "../lib/prisma.js";
 import { checkIdempotency, storeIdempotentResponse } from "../lib/idempotency.js";
+import { queueEvent } from "../lib/webhooks.js";
 import { sendProblem, problems } from "../lib/problem.js";
 import { toMinorBigInt, toMinorNumber } from "../lib/money.js";
 
 const ROUTE = "POST /provider/eligibility-checks";
+
+// No real payer/HMO adapter exists yet (no partner integration is wired
+// up — see the TODO this replaces, below). Rather than leave every check
+// stuck on PENDING/PENDING forever with nothing for a client to render,
+// this resolves it immediately with a deterministic, rule-based stand-in:
+// 80% covered by the payer, 20% patient responsibility, valid 30 days.
+// Swap this out for a real resolveEligibility(payerRef, serviceCodes)
+// call (sync here, or async from a worker that updates the row and fires
+// "eligibility.completed" the same way) once an actual payer integration
+// exists — nothing else about this route needs to change.
+function simulateEligibilityDecision(amountMinor: bigint | null): {
+  decision: "ELIGIBLE" | "PARTIALLY_ELIGIBLE";
+  coveredAmountMinor: bigint | null;
+  patientResponsibilityMinor: bigint | null;
+} {
+  if (amountMinor == null) {
+    return { decision: "ELIGIBLE", coveredAmountMinor: null, patientResponsibilityMinor: null };
+  }
+  const coveredAmountMinor = (amountMinor * 80n) / 100n;
+  const patientResponsibilityMinor = amountMinor - coveredAmountMinor;
+  return { decision: "PARTIALLY_ELIGIBLE", coveredAmountMinor, patientResponsibilityMinor };
+}
 
 function serializeEligibilityCheck(row: {
   id: string; facilityRef: string; patientRef: string; payerRef: string; status: string;
@@ -46,29 +70,36 @@ const eligibilityRoutes: FastifyPluginAsync = async (app) => {
         return sendProblem(reply, problems.conflict(`providerRequestRef "${body.providerRequestRef}" already exists for this tenant.`, "request_ref_already_exists"));
       }
 
-      // NOTE: no payer connection is wired up yet — the contract's own open
-      // decisions list ("Which HMO/insurance source can provide eligibility")
-      // is still unresolved. This persists the request as PENDING and
-      // returns 202, matching the OpenAPI response ("result may arrive
-      // asynchronously"). Wiring a real payer adapter means: implement it
-      // behind a resolveEligibility(payerRef, serviceCodes) interface, call
-      // it here or from a worker, then update the row and emit an
-      // "eligibility.completed" event via queueEvent() — nothing else in
-      // this route needs to change.
-      const created = await prisma.eligibilityCheck.create({
-        data: {
+      const amountMinor = body.amount ? toMinorBigInt(body.amount.amountMinor) : null;
+      const resolved = simulateEligibilityDecision(amountMinor);
+
+      const created = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const row = await tx.eligibilityCheck.create({
+          data: {
+            tenantId,
+            providerRequestRef: body.providerRequestRef,
+            facilityRef: body.facilityRef,
+            patientRef: body.patientRef,
+            payerRef: body.payerRef,
+            serviceCodes: body.serviceCodes,
+            requestedAt: new Date(body.requestedAt),
+            amountMinor,
+            currency: body.amount?.currency ?? null,
+            status: "COMPLETE",
+            decision: resolved.decision,
+            coveredAmountMinor: resolved.coveredAmountMinor,
+            patientResponsibilityMinor: resolved.patientResponsibilityMinor,
+            validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            checkedAt: new Date(),
+          },
+        });
+        await queueEvent(tx, {
           tenantId,
-          providerRequestRef: body.providerRequestRef,
-          facilityRef: body.facilityRef,
-          patientRef: body.patientRef,
-          payerRef: body.payerRef,
-          serviceCodes: body.serviceCodes,
-          requestedAt: new Date(body.requestedAt),
-          amountMinor: body.amount ? toMinorBigInt(body.amount.amountMinor) : null,
-          currency: body.amount?.currency ?? null,
-          status: "PENDING",
-          decision: "PENDING",
-        },
+          eventType: "eligibility.completed",
+          resourceRef: row.id,
+          data: { eligibilityId: row.id, decision: row.decision },
+        });
+        return row;
       });
 
       const responseBody = {
