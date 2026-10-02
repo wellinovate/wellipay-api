@@ -45,6 +45,7 @@ model Tenant {
   partners         Partner[]
   referrals        Referral[]
   patientAccounts  PatientAccount[]
+  hmoPolicies      HmoPolicy[]
 
   @@map("tenants")
 }
@@ -699,4 +700,43 @@ model PatientAccount {
 
   @@index([tenantId, patientRef])
   @@map("patient_accounts")
+}
+
+enum HmoPolicyStatus {
+  ACTIVE
+  PENDING
+  EXPIRED
+}
+
+// A patient's HMO/insurance policy card: the plan they're enrolled on, its
+// annual benefit limit, co-pay percentage, and how much of that limit has
+// been used so far. Replaces the mobile app's hardcoded "Demo health
+// insurance" cards (HmoScreen) with real per-patient data.
+//
+// usedAmountMinor is a running total updated by whoever adjudicates a claim
+// against this policy (see Claim) — nothing here recomputes it
+// automatically yet; that write-back is a follow-up once claims settlement
+// is wired to debit the matching policy.
+model HmoPolicy {
+  id               String          @id @default(cuid())
+  tenantId         String
+  patientRef       String
+  provider         String
+  policyNo         String
+  enrolleeName     String
+  planTier         String
+  coPayPercent     Int
+  annualLimitMinor BigInt
+  usedAmountMinor  BigInt          @default(0)
+  currency         String          @default("NGN")
+  status           HmoPolicyStatus @default(ACTIVE)
+  expiryDate       DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, patientRef, policyNo])
+  @@index([tenantId, patientRef])
+  @@map("hmo_policies")
 }
