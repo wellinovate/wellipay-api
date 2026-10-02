@@ -28,6 +28,7 @@ import patientDataRoutes from "./routes/patientData.js";
 import hmoPolicyRoutes from "./routes/hmoPolicies.js";
 import preAuthorizationRoutes from "./routes/preAuthorizations.js";
 import claimReconciliationRoutes from "./routes/claimReconciliation.js";
+import episodeRoutes from "./routes/episodes.js";
 import { sendProblem, problems } from "./lib/problem.js";
 import { env } from "./env.js";
 
@@ -105,6 +106,7 @@ export function buildApp() {
   app.register(hmoPolicyRoutes);
   app.register(preAuthorizationRoutes);
   app.register(claimReconciliationRoutes);
+  app.register(episodeRoutes);
 
   app.setNotFoundHandler((request, reply) => {
     sendProblem(reply, problems.notFound("No route matches this path and method."));
