@@ -26,6 +26,7 @@ import staffAuthRoutes from "./routes/staffAuth.js";
 import patientAuthRoutes from "./routes/patientAuth.js";
 import patientDataRoutes from "./routes/patientData.js";
 import hmoPolicyRoutes from "./routes/hmoPolicies.js";
+import preAuthorizationRoutes from "./routes/preAuthorizations.js";
 import { sendProblem, problems } from "./lib/problem.js";
 import { env } from "./env.js";
 
@@ -101,6 +102,7 @@ export function buildApp() {
   app.register(patientAuthRoutes);
   app.register(patientDataRoutes);
   app.register(hmoPolicyRoutes);
+  app.register(preAuthorizationRoutes);
 
   app.setNotFoundHandler((request, reply) => {
     sendProblem(reply, problems.notFound("No route matches this path and method."));

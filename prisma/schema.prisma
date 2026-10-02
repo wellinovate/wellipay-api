@@ -46,6 +46,7 @@ model Tenant {
   referrals        Referral[]
   patientAccounts  PatientAccount[]
   hmoPolicies      HmoPolicy[]
+  preAuthorizations PreAuthorization[]
 
   @@map("tenants")
 }
@@ -734,9 +735,47 @@ model HmoPolicy {
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tenant            Tenant             @relation(fields: [tenantId], references: [id])
+  preAuthorizations PreAuthorization[]
 
   @@unique([tenantId, patientRef, policyNo])
   @@index([tenantId, patientRef])
   @@map("hmo_policies")
+}
+
+enum PreAuthStatus {
+  APPROVED
+  IN_REVIEW
+  DECLINED
+}
+
+// A patient's request to pre-authorize a planned procedure against one of
+// their HMO policies. Same "no real payer adapter yet" situation as
+// EligibilityCheck (see eligibility.ts's simulateEligibilityDecision):
+// every request is resolved instantly, APPROVED, splitting
+// estimatedCostMinor by the policy's own coPayPercent — nothing here
+// calls out to a real HMO. Swap the resolution step for a real payer
+// call once one exists; the model and routes don't need to change.
+model PreAuthorization {
+  id                  String        @id @default(cuid())
+  tenantId            String
+  patientRef          String
+  hmoPolicyId         String
+  facilityRef         String
+  procedure           String
+  estimatedCostMinor  BigInt
+  coveredAmountMinor  BigInt
+  patientPortionMinor BigInt
+  currency            String        @default("NGN")
+  status              PreAuthStatus @default(APPROVED)
+  approvalCode        String?
+  notes               String?
+  requestedAt         DateTime      @default(now())
+  createdAt           DateTime      @default(now())
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  hmoPolicy HmoPolicy @relation(fields: [hmoPolicyId], references: [id])
+
+  @@index([tenantId, patientRef])
+  @@map("pre_authorizations")
 }
