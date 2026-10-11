@@ -61,6 +61,8 @@ const staffAuthRoutes: FastifyPluginAsync = async (app) => {
         sub: staff.id,
         tenantId: staff.tenantId,
         scopes: ["mobile.integration.read", "mobile.integration.write"],
+        staffName: staff.name,
+        staffRole: staff.role,
       });
 
       return reply.code(200).send({

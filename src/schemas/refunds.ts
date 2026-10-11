@@ -8,7 +8,8 @@ export const createRefundSchema = z.object({
   paymentId: z.string().min(1),
   amountMinor: z.number().int().min(1),
   reason: z.string().min(1).max(300),
-  requestedBy: z.string().min(1).max(120),
+  // Ignored for staff tokens (identity comes from the token); required for server-to-server tokens.
+  requestedBy: z.string().min(1).max(120).optional(),
 });
 
 export type CreateRefundInput = z.infer<typeof createRefundSchema>;
@@ -26,7 +27,8 @@ export const listRefundsQuerySchema = z.object({
 // approving settles the refund's full requested amountMinor.
 export const decideRefundSchema = z.object({
   decision: z.enum(["APPROVED", "REJECTED"]),
-  actor: z.string().min(1).max(120),
+  // Ignored for staff tokens (identity comes from the token); required for server-to-server tokens.
+  actor: z.string().min(1).max(120).optional(),
   note: z.string().max(300).optional(),
 });
 

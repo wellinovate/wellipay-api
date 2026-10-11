@@ -21,5 +21,12 @@ services:
         value: https://api.wellipay.internal
       - key: TOKEN_AUDIENCE
         value: wellipay-integration-service
+      # The shared POST /public/frontend-token is off. Staff sign in with
+      # POST /staff/login. Set a first password with: npm run staff:set-password
+      - key: ALLOW_PUBLIC_FRONTEND_TOKEN
+        value: "false"
+      # Set in the dashboard to the console's origin, e.g. https://wellipaypro.onrender.com
+      - key: CORS_ORIGIN
+        sync: false
       - key: WEBHOOK_MAX_ATTEMPTS
         value: "8"

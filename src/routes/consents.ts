@@ -3,6 +3,7 @@ import { financialConsentRequestSchema, listFinancialConsentsQuerySchema } from 
 import { prisma } from "../lib/prisma.js";
 import { checkIdempotency, storeIdempotentResponse } from "../lib/idempotency.js";
 import { queueEvent } from "../lib/webhooks.js";
+import { resolveActor } from "../lib/actor.js";
 import { sendProblem, problems } from "../lib/problem.js";
 import { toMinorBigInt } from "../lib/money.js";
 import type { Prisma } from "@prisma/client";
@@ -72,7 +73,7 @@ const consentRoutes: FastifyPluginAsync = async (app) => {
             estimateRevision: body.estimateRevision,
             policyVersion: body.policyVersion,
             acceptedAt: new Date(body.acceptedAt),
-            actorRef: body.actorRef ?? null,
+            actorRef: resolveActor(request.auth, body.actorRef),
             payerSplit: {
               create: body.payerSplit.map((s) => ({
                 payerType: s.payerType,
