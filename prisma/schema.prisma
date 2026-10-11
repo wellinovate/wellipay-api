@@ -488,12 +488,23 @@ enum StaffStatus {
 // endpoint. It exists so a real invite/deactivate action has somewhere real
 // to land, the same way UnmatchedTransaction exists so a real reconciliation
 // decision has somewhere real to land.
+enum StaffAccessLevel {
+  ADMIN
+  FINANCE
+  BILLING
+  CASHIER
+  VIEWER
+}
+
 model Staff {
   id         String      @id @default(cuid())
   tenantId   String
   name       String
   email      String
-  role       String // free text, e.g. "Finance Manager" — no fixed role enum, no per-role permission enforcement yet
+  role       String // free-text job title, e.g. "Finance Manager". Display only; permissions come from accessLevel.
+  // What this person may do. Existing rows default to ADMIN so nobody loses
+  // access when this ships; new invites are created as CASHIER. See src/lib/permissions.ts.
+  accessLevel StaffAccessLevel @default(ADMIN)
   branch     String? // free text branch/location label, opaque to this service
   status     StaffStatus @default(ACTIVE)
   invitedAt  DateTime    @default(now())

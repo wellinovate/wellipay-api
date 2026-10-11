@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import argon2 from "argon2";
 import { passwordProblem } from "../lib/passwordPolicy.js";
 import { clearedState } from "../lib/lockout.js";
-import { createStaffSchema, listStaffQuerySchema, updateStaffStatusSchema, setStaffPasswordSchema } from "../schemas/staff.js";
+import { createStaffSchema, listStaffQuerySchema, updateStaffStatusSchema, updateStaffAccessLevelSchema, setStaffPasswordSchema } from "../schemas/staff.js";
 import { prisma } from "../lib/prisma.js";
 import { checkIdempotency, storeIdempotentResponse } from "../lib/idempotency.js";
 import { queueEvent } from "../lib/webhooks.js";
@@ -12,7 +12,7 @@ import type { Prisma } from "@prisma/client";
 const CREATE_ROUTE = "POST /provider/staff";
 
 function serializeStaff(row: {
-  id: string; name: string; email: string; role: string; branch: string | null;
+  id: string; name: string; email: string; role: string; accessLevel: string; branch: string | null;
   status: string; invitedAt: Date; deactivatedAt: Date | null;
 }) {
   return {
@@ -20,11 +20,21 @@ function serializeStaff(row: {
     name: row.name,
     email: row.email,
     role: row.role,
+    accessLevel: row.accessLevel,
     branch: row.branch ?? undefined,
     status: row.status,
     invitedAt: row.invitedAt.toISOString(),
     deactivatedAt: row.deactivatedAt ? row.deactivatedAt.toISOString() : undefined,
   };
+}
+
+// True when no other active ADMIN would remain in the tenant if this person
+// stopped being one. Keeps the directory from locking everyone out.
+async function isLastActiveAdmin(tenantId: string, staffId: string): Promise<boolean> {
+  const others = await prisma.staff.count({
+    where: { tenantId, accessLevel: "ADMIN", status: "ACTIVE", id: { not: staffId } },
+  });
+  return others === 0;
 }
 
 const staffRoutes: FastifyPluginAsync = async (app) => {
@@ -50,7 +60,7 @@ const staffRoutes: FastifyPluginAsync = async (app) => {
 
       const created = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const row = await tx.staff.create({
-          data: { tenantId, name: body.name, email: body.email.trim().toLowerCase(), role: body.role, branch: body.branch ?? null },
+          data: { tenantId, name: body.name, email: body.email.trim().toLowerCase(), role: body.role, accessLevel: body.accessLevel, branch: body.branch ?? null },
         });
         await queueEvent(tx, {
           tenantId,
@@ -113,6 +123,9 @@ const staffRoutes: FastifyPluginAsync = async (app) => {
       if (existing.status === body.status) {
         return sendProblem(reply, problems.conflict(`Staff member is already ${body.status.toLowerCase()}.`, "no_status_change"));
       }
+      if (body.status === "DEACTIVATED" && existing.accessLevel === "ADMIN" && (await isLastActiveAdmin(tenantId, existing.id))) {
+        return sendProblem(reply, problems.conflict("This is the last active Admin. Make someone else an Admin first.", "last_admin"));
+      }
 
       const updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const row = await tx.staff.update({
@@ -131,6 +144,36 @@ const staffRoutes: FastifyPluginAsync = async (app) => {
         return row;
       });
 
+      return reply.code(200).send(serializeStaff(updated));
+    }
+  );
+
+  // Changes what a staff member may do. Takes effect at their next sign-in
+  // (existing tokens last up to 15 minutes).
+  app.patch(
+    "/provider/staff/:id/access-level",
+    { preHandler: app.requireScope("mobile.integration.write") },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const parsed = updateStaffAccessLevelSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return sendProblem(reply, problems.badRequest(parsed.error.issues.map((i) => i.message).join("; "), "invalid_body"));
+      }
+      const tenantId = request.auth!.tenantId;
+      const { accessLevel } = parsed.data;
+
+      const existing = await prisma.staff.findFirst({ where: { id, tenantId } });
+      if (!existing) {
+        return sendProblem(reply, problems.notFound());
+      }
+      if (existing.accessLevel === accessLevel) {
+        return sendProblem(reply, problems.conflict(`Staff member is already ${accessLevel}.`, "no_access_level_change"));
+      }
+      if (existing.accessLevel === "ADMIN" && existing.status === "ACTIVE" && (await isLastActiveAdmin(tenantId, existing.id))) {
+        return sendProblem(reply, problems.conflict("This is the last active Admin. Make someone else an Admin first.", "last_admin"));
+      }
+
+      const updated = await prisma.staff.update({ where: { id: existing.id }, data: { accessLevel } });
       return reply.code(200).send(serializeStaff(updated));
     }
   );

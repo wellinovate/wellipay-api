@@ -29,6 +29,9 @@ export interface AccessTokenClaims {
   // acted from the signed token instead of a name the caller typed.
   staffName?: string;
   staffRole?: string;
+  // Access level at the time of login (see src/lib/permissions.ts). A staff
+  // token without it is rejected, so old tokens cannot skip the checks.
+  staffLevel?: string;
 }
 
 export async function issueAccessToken(claims: AccessTokenClaims, expiresInSeconds = 900): Promise<{ token: string; expiresIn: number }> {
@@ -38,6 +41,7 @@ export async function issueAccessToken(claims: AccessTokenClaims, expiresInSecon
     ...(claims.patientRef ? { patientRef: claims.patientRef } : {}),
     ...(claims.staffName ? { staffName: claims.staffName } : {}),
     ...(claims.staffRole ? { staffRole: claims.staffRole } : {}),
+    ...(claims.staffLevel ? { staffLevel: claims.staffLevel } : {}),
   })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(claims.sub)
@@ -56,7 +60,12 @@ export async function verifyAccessToken(token: string): Promise<AccessTokenClaim
   const patientRef = payload["patientRef"];
   const staffName = payload["staffName"];
   const staffRole = payload["staffRole"];
-  if ((staffName !== undefined && typeof staffName !== "string") || (staffRole !== undefined && typeof staffRole !== "string")) {
+  const staffLevel = payload["staffLevel"];
+  if (
+    (staffName !== undefined && typeof staffName !== "string") ||
+    (staffRole !== undefined && typeof staffRole !== "string") ||
+    (staffLevel !== undefined && typeof staffLevel !== "string")
+  ) {
     throw new Error("Malformed access token claims");
   }
   if (typeof payload.sub !== "string" || typeof tenantId !== "string" || !Array.isArray(scopes)) {
@@ -74,5 +83,6 @@ export async function verifyAccessToken(token: string): Promise<AccessTokenClaim
     ...(patientRef !== undefined ? { patientRef } : {}),
     ...(staffName !== undefined ? { staffName } : {}),
     ...(staffRole !== undefined ? { staffRole } : {}),
+    ...(staffLevel !== undefined ? { staffLevel } : {}),
   };
 }

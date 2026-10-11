@@ -2,6 +2,7 @@ import fp from "fastify-plugin";
 import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from "fastify";
 import { verifyAccessToken } from "../lib/tokens.js";
 import { sendProblem, problems } from "../lib/problem.js";
+import { ACCESS_LEVEL_LABELS, isStaffAccessLevel, levelCanCall, type StaffAccessLevel } from "../lib/permissions.js";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -10,7 +11,7 @@ declare module "fastify" {
       tenantId: string;
       scopes: string[];
       // Present only when the token came from POST /staff/login.
-      staff?: { id: string; name: string; role: string };
+      staff?: { id: string; name: string; role: string; level: StaffAccessLevel };
     };
     // Set only by requirePatientScope(), never by requireScope() — a route
     // that needs the authenticated patient's own tenantId/patientRef reads
@@ -51,11 +52,27 @@ const authPlugin: FastifyPluginAsync = async (app) => {
         if (claims.patientRef !== undefined) {
           return sendProblem(reply, problems.forbidden("A patient token cannot call this endpoint."));
         }
+        let staff: NonNullable<FastifyRequest["auth"]>["staff"];
+        if (claims.staffName) {
+          // A staff token from before access levels existed has no level.
+          // Treat it as expired so the console signs in again.
+          if (!isStaffAccessLevel(claims.staffLevel)) {
+            return sendProblem(reply, problems.unauthorized("Sign in again to continue.", "session_outdated"));
+          }
+          const pattern = request.routeOptions.url ?? request.url;
+          if (!levelCanCall(claims.staffLevel, request.method, pattern)) {
+            return sendProblem(
+              reply,
+              problems.forbidden(`Your access level (${ACCESS_LEVEL_LABELS[claims.staffLevel]}) cannot do this.`, "insufficient_access_level")
+            );
+          }
+          staff = { id: claims.sub, name: claims.staffName, role: claims.staffRole ?? "", level: claims.staffLevel };
+        }
         request.auth = {
           clientId: claims.sub,
           tenantId: claims.tenantId,
           scopes: claims.scopes,
-          ...(claims.staffName ? { staff: { id: claims.sub, name: claims.staffName, role: claims.staffRole ?? "" } } : {}),
+          ...(staff ? { staff } : {}),
         };
       } catch {
         return sendProblem(reply, problems.unauthorized("Token is invalid, expired, or malformed."));

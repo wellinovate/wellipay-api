@@ -4,7 +4,8 @@
 // Run from the Render shell (or locally with DATABASE_URL set):
 //   STAFF_EMAIL=a@b.ng STAFF_PASSWORD='at least 8 chars' npm run staff:set-password
 // To create the staff member if the email does not exist yet, also set
-// STAFF_NAME and optionally STAFF_ROLE (default "Finance Manager").
+// STAFF_NAME and optionally STAFF_ROLE (default "Finance Manager"). A
+// created staff member is an Admin; an existing one keeps their access level.
 // The password is read from the environment so it never lands in shell
 // history as a command-line argument.
 import argon2 from "argon2";
@@ -41,7 +42,7 @@ async function main() {
     throw new Error("Could not find the tenant: FRONTEND_CLIENT_ID does not match an API credential.");
   }
   const created = await prisma.staff.create({
-    data: { tenantId: credential.tenantId, name, email, role: process.env["STAFF_ROLE"]?.trim() || "Finance Manager", passwordHash },
+    data: { tenantId: credential.tenantId, name, email, role: process.env["STAFF_ROLE"]?.trim() || "Finance Manager", accessLevel: "ADMIN", passwordHash },
   });
   console.log(`Created staff ${created.email} (${created.name}).`);
 }
