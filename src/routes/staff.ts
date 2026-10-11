@@ -41,14 +41,14 @@ const staffRoutes: FastifyPluginAsync = async (app) => {
       if (!idem) return;
       if (idem.replayed) return;
 
-      const existingEmail = await prisma.staff.findUnique({ where: { email: body.email } });
+      const existingEmail = await prisma.staff.findFirst({ where: { email: { equals: body.email, mode: "insensitive" } } });
       if (existingEmail) {
         return sendProblem(reply, problems.conflict(`A staff member with email "${body.email}" already exists.`, "email_already_exists"));
       }
 
       const created = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const row = await tx.staff.create({
-          data: { tenantId, name: body.name, email: body.email, role: body.role, branch: body.branch ?? null },
+          data: { tenantId, name: body.name, email: body.email.trim().toLowerCase(), role: body.role, branch: body.branch ?? null },
         });
         await queueEvent(tx, {
           tenantId,

@@ -43,7 +43,9 @@ const staffAuthRoutes: FastifyPluginAsync = async (app) => {
         return sendProblem(reply, problems.forbidden("Request origin is not allowed to log in here.", "origin_not_allowed"));
       }
 
-      const staff = await prisma.staff.findUnique({ where: { email } });
+      // Case-insensitive: the console lowercases what you type, but staff may
+      // have been saved with capitals.
+      const staff = await prisma.staff.findFirst({ where: { email: { equals: email, mode: "insensitive" } } });
       // Same generic message whether the email doesn't exist, the account
       // is deactivated, no password was ever set, or the password is
       // wrong — never reveal which case it was.
