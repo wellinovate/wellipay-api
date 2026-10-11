@@ -8,13 +8,11 @@ import { sendProblem, problems } from "../lib/problem.js";
 import { env } from "../env.js";
 
 // Per-staff login, replacing the single shared frontend token as the
-// identity behind write actions. Every logged-in staff member still gets
-// the same two scopes the old shared token had (mobile.integration.read/
-// write) — there's no per-role permission enforcement yet, only per-person
-// identity. That's a real gap: a Front-Desk Cashier and a Finance Manager
-// can do exactly the same things today. Same safeguards as
-// POST /public/frontend-token: rate limiting and (once CORS_ORIGIN is
-// locked down) an origin check.
+// identity behind write actions. Every staff token carries the same two
+// scopes (mobile.integration.read/write) plus the person's access level;
+// plugins/auth.ts then checks that level against src/lib/permissions.ts on
+// every /provider route. Same safeguards as the old shared token: rate
+// limiting and an origin check.
 const staffAuthRoutes: FastifyPluginAsync = async (app) => {
   app.post(
     "/staff/login",
@@ -85,13 +83,14 @@ const staffAuthRoutes: FastifyPluginAsync = async (app) => {
         scopes: ["mobile.integration.read", "mobile.integration.write"],
         staffName: staff.name,
         staffRole: staff.role,
+        staffLevel: staff.accessLevel,
       });
 
       return reply.code(200).send({
         access_token: token,
         token_type: "Bearer",
         expires_in: expiresIn,
-        staff: { staffId: staff.id, name: staff.name, email: staff.email, role: staff.role },
+        staff: { staffId: staff.id, name: staff.name, email: staff.email, role: staff.role, accessLevel: staff.accessLevel },
       });
     }
   );

@@ -1,15 +1,16 @@
 import { z } from "zod";
+import { STAFF_ACCESS_LEVELS } from "../lib/permissions.js";
 import { MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from "../lib/passwordPolicy.js";
 
 // Creates a staff directory entry — an invite record, not an account by
-// itself. `role` stays a free-text label; there's still no per-role
-// permission enforcement, only per-staff identity (see PATCH .../password
-// and POST /staff/login below).
+// itself. `role` is a free-text job title; what the person may do comes from
+// `accessLevel` (default CASHIER, the least-privileged level that can work).
 export const createStaffSchema = z.object({
   name: z.string().min(1).max(120),
   email: z.string().email().max(160),
   role: z.string().min(1).max(60),
   branch: z.string().max(80).optional(),
+  accessLevel: z.enum(STAFF_ACCESS_LEVELS).default("CASHIER"),
 });
 
 export type CreateStaffInput = z.infer<typeof createStaffSchema>;
@@ -30,4 +31,8 @@ export const updateStaffStatusSchema = z.object({
 // trusted channel, and tells the staff member.
 export const setStaffPasswordSchema = z.object({
   password: z.string().min(MIN_PASSWORD_LENGTH).max(MAX_PASSWORD_LENGTH),
+});
+
+export const updateStaffAccessLevelSchema = z.object({
+  accessLevel: z.enum(STAFF_ACCESS_LEVELS),
 });
