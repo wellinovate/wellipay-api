@@ -22,7 +22,7 @@ async function main() {
   }
 
   const passwordHash = await argon2.hash(password);
-  const existing = await prisma.staff.findUnique({ where: { email } });
+  const existing = await prisma.staff.findFirst({ where: { email: { equals: email, mode: "insensitive" } } });
 
   if (existing) {
     await prisma.staff.update({ where: { id: existing.id }, data: { passwordHash, status: "ACTIVE", deactivatedAt: null } });
