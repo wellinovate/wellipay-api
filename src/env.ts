@@ -33,6 +33,12 @@ const schema = z.object({
   // that hasn't set it yet. The /patient/* routes return 503 until it's set;
   // everything else is unaffected.
   CLERK_SECRET_KEY: z.string().min(1).optional(),
+  // Paystack secret key (sk_live_... or sk_test_...). Optional: the Paystack
+  // routes return 503 until it is set. Server-side only. It is also the key
+  // Paystack signs webhooks with, so POST /webhooks/paystack needs it too.
+  PAYSTACK_SECRET_KEY: z.string().min(1).optional(),
+  // Where Paystack sends the payer after checkout. Optional.
+  PAYSTACK_CALLBACK_URL: z.string().url().optional(),
 });
 
 const parsed = schema.safeParse(process.env);

@@ -69,6 +69,9 @@ export const ROUTE_RULES: ReadonlyArray<readonly [string, string, Levels]> = [
   ["POST", "/provider/payment-plans", BILLING_WORK],
   ["POST", "/provider/payment-plans/:id/installments/:seq/pay", FRONT_DESK],
 
+  ["GET", "/provider/paystack/charges/:reference", EVERYONE],
+  ["POST", "/provider/paystack/charges", FRONT_DESK],
+
   ["GET", "/provider/payments", EVERYONE],
   ["POST", "/provider/payments", FRONT_DESK],
 
