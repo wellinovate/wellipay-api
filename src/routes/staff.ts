@@ -1,5 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import argon2 from "argon2";
+import { passwordProblem } from "../lib/passwordPolicy.js";
+import { clearedState } from "../lib/lockout.js";
 import { createStaffSchema, listStaffQuerySchema, updateStaffStatusSchema, setStaffPasswordSchema } from "../schemas/staff.js";
 import { prisma } from "../lib/prisma.js";
 import { checkIdempotency, storeIdempotentResponse } from "../lib/idempotency.js";
@@ -41,14 +43,14 @@ const staffRoutes: FastifyPluginAsync = async (app) => {
       if (!idem) return;
       if (idem.replayed) return;
 
-      const existingEmail = await prisma.staff.findUnique({ where: { email: body.email } });
+      const existingEmail = await prisma.staff.findFirst({ where: { email: { equals: body.email, mode: "insensitive" } } });
       if (existingEmail) {
         return sendProblem(reply, problems.conflict(`A staff member with email "${body.email}" already exists.`, "email_already_exists"));
       }
 
       const created = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const row = await tx.staff.create({
-          data: { tenantId, name: body.name, email: body.email, role: body.role, branch: body.branch ?? null },
+          data: { tenantId, name: body.name, email: body.email.trim().toLowerCase(), role: body.role, branch: body.branch ?? null },
         });
         await queueEvent(tx, {
           tenantId,
@@ -153,8 +155,14 @@ const staffRoutes: FastifyPluginAsync = async (app) => {
         return sendProblem(reply, problems.notFound());
       }
 
+      const weak = passwordProblem(parsed.data.password, existing.email);
+      if (weak) {
+        return sendProblem(reply, problems.badRequest(weak, "weak_password"));
+      }
+
       const passwordHash = await argon2.hash(parsed.data.password);
-      await prisma.staff.update({ where: { id: existing.id }, data: { passwordHash } });
+      // Resetting a password also clears any login lockout.
+      await prisma.staff.update({ where: { id: existing.id }, data: { passwordHash, ...clearedState } });
 
       return reply.code(204).send();
     }

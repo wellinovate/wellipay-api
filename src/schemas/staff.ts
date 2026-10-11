@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from "../lib/passwordPolicy.js";
 
 // Creates a staff directory entry — an invite record, not an account by
 // itself. `role` stays a free-text label; there's still no per-role
@@ -28,5 +29,5 @@ export const updateStaffStatusSchema = z.object({
 // password" email flow yet — a manager sets it here, in person or over a
 // trusted channel, and tells the staff member.
 export const setStaffPasswordSchema = z.object({
-  password: z.string().min(8).max(200),
+  password: z.string().min(MIN_PASSWORD_LENGTH).max(MAX_PASSWORD_LENGTH),
 });
