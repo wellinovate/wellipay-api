@@ -37,9 +37,10 @@ describe("staffLoginSchema", () => {
 });
 
 describe("setStaffPasswordSchema", () => {
-  it("requires at least 8 characters", () => {
+  it("requires at least 12 characters", () => {
     expect(setStaffPasswordSchema.safeParse({ password: "short1" }).success).toBe(false);
-    expect(setStaffPasswordSchema.safeParse({ password: "longenough1" }).success).toBe(true);
+    expect(setStaffPasswordSchema.safeParse({ password: "longenough1" }).success).toBe(false);
+    expect(setStaffPasswordSchema.safeParse({ password: "twelve-chars" }).success).toBe(true);
   });
 });
 

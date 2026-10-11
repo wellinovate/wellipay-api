@@ -1,5 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import argon2 from "argon2";
+import { passwordProblem } from "../lib/passwordPolicy.js";
+import { clearedState } from "../lib/lockout.js";
 import { createStaffSchema, listStaffQuerySchema, updateStaffStatusSchema, setStaffPasswordSchema } from "../schemas/staff.js";
 import { prisma } from "../lib/prisma.js";
 import { checkIdempotency, storeIdempotentResponse } from "../lib/idempotency.js";
@@ -153,8 +155,14 @@ const staffRoutes: FastifyPluginAsync = async (app) => {
         return sendProblem(reply, problems.notFound());
       }
 
+      const weak = passwordProblem(parsed.data.password, existing.email);
+      if (weak) {
+        return sendProblem(reply, problems.badRequest(weak, "weak_password"));
+      }
+
       const passwordHash = await argon2.hash(parsed.data.password);
-      await prisma.staff.update({ where: { id: existing.id }, data: { passwordHash } });
+      // Resetting a password also clears any login lockout.
+      await prisma.staff.update({ where: { id: existing.id }, data: { passwordHash, ...clearedState } });
 
       return reply.code(204).send();
     }

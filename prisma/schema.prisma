@@ -505,6 +505,9 @@ model Staff {
   // are — a real limitation worth revisiting if this ever serves more than
   // one facility group under one login surface.
   passwordHash String?
+  // Failed sign-ins since the last success, and when a lockout ends. See src/lib/lockout.ts.
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 

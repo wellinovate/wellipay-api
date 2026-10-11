@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import argon2 from "argon2";
 import { staffLoginSchema } from "../schemas/staffAuth.js";
 import { prisma } from "../lib/prisma.js";
+import { isLocked, minutesRemaining, afterFailure, clearedState } from "../lib/lockout.js";
 import { issueAccessToken } from "../lib/tokens.js";
 import { sendProblem, problems } from "../lib/problem.js";
 import { env } from "../env.js";
@@ -54,9 +55,28 @@ const staffAuthRoutes: FastifyPluginAsync = async (app) => {
       if (!staff || staff.status !== "ACTIVE" || !staff.passwordHash) {
         return genericFailure();
       }
+
+      const now = new Date();
+      if (isLocked(staff, now)) {
+        // Say so plainly: a locked staff member needs to know to wait. This
+        // does confirm the email exists, which is a small cost for a staff
+        // console compared with leaving people guessing.
+        return sendProblem(
+          reply,
+          problems.rateLimited(
+            `Too many failed sign-in attempts. Try again in ${minutesRemaining(staff, now)} minute(s), or ask a manager to reset your password.`,
+            "account_locked"
+          )
+        );
+      }
+
       const validPassword = await argon2.verify(staff.passwordHash, password).catch(() => false);
       if (!validPassword) {
+        await prisma.staff.update({ where: { id: staff.id }, data: afterFailure(staff, now) });
         return genericFailure();
+      }
+      if (staff.failedLoginCount > 0 || staff.lockedUntil) {
+        await prisma.staff.update({ where: { id: staff.id }, data: clearedState });
       }
 
       const { token, expiresIn } = await issueAccessToken({

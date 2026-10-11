@@ -10,6 +10,7 @@
 import argon2 from "argon2";
 import { prisma } from "../lib/prisma.js";
 import { env } from "../env.js";
+import { passwordProblem } from "../lib/passwordPolicy.js";
 
 async function main() {
   const email = process.env["STAFF_EMAIL"]?.trim().toLowerCase();
@@ -17,15 +18,16 @@ async function main() {
   if (!email || !password) {
     throw new Error("Set STAFF_EMAIL and STAFF_PASSWORD.");
   }
-  if (password.length < 8 || password.length > 200) {
-    throw new Error("STAFF_PASSWORD must be 8 to 200 characters.");
+  const weak = passwordProblem(password, email);
+  if (weak) {
+    throw new Error(`STAFF_PASSWORD rejected: ${weak}`);
   }
 
   const passwordHash = await argon2.hash(password);
   const existing = await prisma.staff.findFirst({ where: { email: { equals: email, mode: "insensitive" } } });
 
   if (existing) {
-    await prisma.staff.update({ where: { id: existing.id }, data: { passwordHash, status: "ACTIVE", deactivatedAt: null } });
+    await prisma.staff.update({ where: { id: existing.id }, data: { passwordHash, status: "ACTIVE", deactivatedAt: null, failedLoginCount: 0, lockedUntil: null } });
     console.log(`Password set for ${email} (${existing.name}).`);
     return;
   }
