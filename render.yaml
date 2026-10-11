@@ -28,5 +28,8 @@ services:
       # Set in the dashboard to the console's origin, e.g. https://wellipaypro.onrender.com
       - key: CORS_ORIGIN
         sync: false
+      # Paystack secret key (sk_live_...). Set in the dashboard, never in git.
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
       - key: WEBHOOK_MAX_ATTEMPTS
         value: "8"
