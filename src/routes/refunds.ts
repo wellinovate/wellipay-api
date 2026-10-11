@@ -5,6 +5,7 @@ import { checkIdempotency, storeIdempotentResponse } from "../lib/idempotency.js
 import { queueEvent } from "../lib/webhooks.js";
 import { sendProblem, problems } from "../lib/problem.js";
 import { toMinorBigInt, toMinorNumber } from "../lib/money.js";
+import { resolveActor } from "../lib/actor.js";
 import type { Prisma } from "@prisma/client";
 
 const CREATE_ROUTE = "POST /provider/refunds";
@@ -41,6 +42,10 @@ const refundRoutes: FastifyPluginAsync = async (app) => {
       }
       const tenantId = request.auth!.tenantId;
       const body = parsed.data;
+      const requestedBy = resolveActor(request.auth, body.requestedBy);
+      if (!requestedBy) {
+        return sendProblem(reply, problems.badRequest("requestedBy is required for this token.", "actor_required"));
+      }
 
       const idem = await checkIdempotency(prisma, request, reply, CREATE_ROUTE);
       if (!idem) return;
@@ -89,7 +94,7 @@ const refundRoutes: FastifyPluginAsync = async (app) => {
             amountMinor: requestedMinor,
             currency: payment.currency,
             reason: body.reason,
-            requestedBy: body.requestedBy,
+            requestedBy: requestedBy,
           },
         });
         await queueEvent(tx, {
@@ -150,6 +155,10 @@ const refundRoutes: FastifyPluginAsync = async (app) => {
       }
       const tenantId = request.auth!.tenantId;
       const body = parsed.data;
+      const actor = resolveActor(request.auth, body.actor);
+      if (!actor) {
+        return sendProblem(reply, problems.badRequest("actor is required for this token.", "actor_required"));
+      }
 
       const refund = await prisma.refund.findFirst({ where: { id: refundId, tenantId } });
       if (!refund) {
@@ -163,7 +172,7 @@ const refundRoutes: FastifyPluginAsync = async (app) => {
       const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const updated = await tx.refund.update({
           where: { id: refund.id },
-          data: { status: body.decision, decidedBy: body.actor, decidedAt: now },
+          data: { status: body.decision, decidedBy: actor, decidedAt: now },
         });
 
         let invoiceSnapshot: { invoiceId: string; paidAmountMinor: bigint; status: string } | null = null;
@@ -192,7 +201,7 @@ const refundRoutes: FastifyPluginAsync = async (app) => {
           tenantId,
           eventType: "refund.decided",
           resourceRef: updated.id,
-          data: { refundRef: updated.id, status: updated.status, decidedBy: body.actor },
+          data: { refundRef: updated.id, status: updated.status, decidedBy: actor },
         });
 
         return { refund: updated, invoiceSnapshot };

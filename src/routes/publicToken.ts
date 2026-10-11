@@ -49,6 +49,9 @@ const publicTokenRoutes: FastifyPluginAsync = async (app) => {
       },
     },
     async (request, reply) => {
+      if (env.ALLOW_PUBLIC_FRONTEND_TOKEN !== "true") {
+        return sendProblem(reply, problems.notFound("The shared frontend token is disabled. Sign in with a staff account.", "frontend_token_disabled"));
+      }
       const allowedOrigins = env.CORS_ORIGIN === "*" ? null : env.CORS_ORIGIN.split(",").map((o) => o.trim());
       const origin = request.headers.origin;
       if (allowedOrigins && origin && !allowedOrigins.includes(origin)) {

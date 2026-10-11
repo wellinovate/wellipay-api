@@ -25,6 +25,10 @@ export interface AccessTokenClaims {
   // scopes alone aren't enough since nothing stops the same scope string
   // space from colliding later.
   patientRef?: string;
+  // Set only on a staff token (POST /staff/login). Lets routes record who
+  // acted from the signed token instead of a name the caller typed.
+  staffName?: string;
+  staffRole?: string;
 }
 
 export async function issueAccessToken(claims: AccessTokenClaims, expiresInSeconds = 900): Promise<{ token: string; expiresIn: number }> {
@@ -32,6 +36,8 @@ export async function issueAccessToken(claims: AccessTokenClaims, expiresInSecon
     tenantId: claims.tenantId,
     scopes: claims.scopes,
     ...(claims.patientRef ? { patientRef: claims.patientRef } : {}),
+    ...(claims.staffName ? { staffName: claims.staffName } : {}),
+    ...(claims.staffRole ? { staffRole: claims.staffRole } : {}),
   })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(claims.sub)
@@ -48,6 +54,11 @@ export async function verifyAccessToken(token: string): Promise<AccessTokenClaim
   const tenantId = payload["tenantId"];
   const scopes = payload["scopes"];
   const patientRef = payload["patientRef"];
+  const staffName = payload["staffName"];
+  const staffRole = payload["staffRole"];
+  if ((staffName !== undefined && typeof staffName !== "string") || (staffRole !== undefined && typeof staffRole !== "string")) {
+    throw new Error("Malformed access token claims");
+  }
   if (typeof payload.sub !== "string" || typeof tenantId !== "string" || !Array.isArray(scopes)) {
     throw new Error("Malformed access token claims");
   }
@@ -61,5 +72,7 @@ export async function verifyAccessToken(token: string): Promise<AccessTokenClaim
     // exactOptionalPropertyTypes forbids assigning `patientRef: undefined`
     // directly — omit the key entirely rather than set it to undefined.
     ...(patientRef !== undefined ? { patientRef } : {}),
+    ...(staffName !== undefined ? { staffName } : {}),
+    ...(staffRole !== undefined ? { staffRole } : {}),
   };
 }

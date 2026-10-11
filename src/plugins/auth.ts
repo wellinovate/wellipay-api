@@ -9,6 +9,8 @@ declare module "fastify" {
       clientId: string;
       tenantId: string;
       scopes: string[];
+      // Present only when the token came from POST /staff/login.
+      staff?: { id: string; name: string; role: string };
     };
     // Set only by requirePatientScope(), never by requireScope() — a route
     // that needs the authenticated patient's own tenantId/patientRef reads
@@ -49,7 +51,12 @@ const authPlugin: FastifyPluginAsync = async (app) => {
         if (claims.patientRef !== undefined) {
           return sendProblem(reply, problems.forbidden("A patient token cannot call this endpoint."));
         }
-        request.auth = { clientId: claims.sub, tenantId: claims.tenantId, scopes: claims.scopes };
+        request.auth = {
+          clientId: claims.sub,
+          tenantId: claims.tenantId,
+          scopes: claims.scopes,
+          ...(claims.staffName ? { staff: { id: claims.sub, name: claims.staffName, role: claims.staffRole ?? "" } } : {}),
+        };
       } catch {
         return sendProblem(reply, problems.unauthorized("Token is invalid, expired, or malformed."));
       }

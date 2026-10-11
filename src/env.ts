@@ -14,6 +14,10 @@ const schema = z.object({
   // a prototype, but this ships a real bearer-token-issuing API, so lock it
   // down to the actual frontend origin(s) before this goes further than a demo.
   CORS_ORIGIN: z.string().default("*"),
+  // POST /public/frontend-token hands a provider-scoped token to any caller
+  // with no login. Off by default: provider routes are reached through
+  // POST /staff/login. Set to "true" only as a temporary bootstrap.
+  ALLOW_PUBLIC_FRONTEND_TOKEN: z.enum(["true", "false"]).default("false"),
   // Credentials for the WelliPayPro frontend's own token proxy
   // (POST /public/frontend-token). Held server-side only — the browser
   // never sees a client_secret. Must match a seeded ApiCredential's
