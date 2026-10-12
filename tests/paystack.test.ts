@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createHmac } from "node:crypto";
-import { verifyPaystackSignature, mapPaystackChannel, initializeTransaction, listSettlements, PaystackError } from "../src/lib/paystack.js";
+import { verifyPaystackSignature, mapPaystackChannel, initializeTransaction, createRefund, listSettlements, PaystackError } from "../src/lib/paystack.js";
 
 const secret = "sk_test_example";
 const body = JSON.stringify({ event: "charge.success", data: { reference: "wp_1", amount: 5000 } });
@@ -53,6 +53,30 @@ describe("initializeTransaction", () => {
     await expect(
       initializeTransaction(secret, { email: "a@b.com", amountMinor: 100, reference: "r" }, ok({ status: false, message: "Invalid key" }, 401))
     ).rejects.toThrow(new PaystackError("Invalid key"));
+  });
+});
+
+describe("createRefund", () => {
+  it("sends the transaction reference and kobo amount, and returns Paystack's refund id", async () => {
+    let sent: { url: string; init: RequestInit } | undefined;
+    const fake = (async (url: string, init: RequestInit) => {
+      sent = { url, init };
+      return new Response(JSON.stringify({ status: true, data: { id: 3018, status: "pending" } }));
+    }) as unknown as typeof fetch;
+    const result = await createRefund(secret, { transaction: "wp_1", amountMinor: 10000 }, fake);
+    expect(result).toEqual({ refundId: "3018", status: "pending" });
+    expect(sent!.url).toBe("https://api.paystack.co/refund");
+    expect(JSON.parse(sent!.init.body as string)).toEqual({ transaction: "wp_1", amount: 10000 });
+  });
+
+  it("throws with Paystack's message when it refuses", async () => {
+    const fake = (async () => new Response(JSON.stringify({ status: false, message: "Transaction has been fully reversed" }), { status: 400 })) as unknown as typeof fetch;
+    await expect(createRefund(secret, { transaction: "wp_1", amountMinor: 1 }, fake)).rejects.toThrow("Transaction has been fully reversed");
+  });
+
+  it("throws when Paystack reports the refund as failed", async () => {
+    const fake = (async () => new Response(JSON.stringify({ status: true, data: { id: 1, status: "failed" } }))) as unknown as typeof fetch;
+    await expect(createRefund(secret, { transaction: "wp_1", amountMinor: 1 }, fake)).rejects.toThrow(PaystackError);
   });
 });
 

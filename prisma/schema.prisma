@@ -352,6 +352,9 @@ model Refund {
   status            RefundStatus @default(PENDING)
   decidedBy         String?
   decidedAt         DateTime?
+  // Set only when the money went back through Paystack.
+  gatewayRefundRef  String?
+  gatewayStatus     String?
   createdAt         DateTime     @default(now())
 
   tenant  Tenant  @relation(fields: [tenantId], references: [id])
