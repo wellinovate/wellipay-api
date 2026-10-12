@@ -86,11 +86,16 @@ const staffAuthRoutes: FastifyPluginAsync = async (app) => {
         staffLevel: staff.accessLevel,
       });
 
+      const tenant = await prisma.tenant.findUnique({ where: { id: staff.tenantId }, select: { name: true, providerType: true } });
+
       return reply.code(200).send({
         access_token: token,
         token_type: "Bearer",
         expires_in: expiresIn,
         staff: { staffId: staff.id, name: staff.name, email: staff.email, role: staff.role, accessLevel: staff.accessLevel },
+        // Lets the console show the provider's own name. Tenants created
+        // before provider types existed have none and count as hospitals.
+        tenant: { name: tenant?.name ?? "", providerType: tenant?.providerType ?? "HOSPITAL" },
       });
     }
   );
