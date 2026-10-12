@@ -6,6 +6,8 @@ import { queueEvent } from "../lib/webhooks.js";
 import { sendProblem, problems } from "../lib/problem.js";
 import { toMinorBigInt, toMinorNumber } from "../lib/money.js";
 import { resolveActor } from "../lib/actor.js";
+import { env } from "../env.js";
+import { createRefund, PaystackError } from "../lib/paystack.js";
 import type { Prisma } from "@prisma/client";
 
 const CREATE_ROUTE = "POST /provider/refunds";
@@ -13,7 +15,7 @@ const CREATE_ROUTE = "POST /provider/refunds";
 function serializeRefund(refund: {
   id: string; providerRefundRef: string; paymentId: string; invoiceId: string; amountMinor: bigint;
   currency: string; reason: string; requestedBy: string; status: string; decidedBy: string | null;
-  decidedAt: Date | null; createdAt: Date;
+  decidedAt: Date | null; createdAt: Date; gatewayRefundRef?: string | null; gatewayStatus?: string | null;
 }) {
   return {
     refundId: refund.id,
@@ -28,6 +30,8 @@ function serializeRefund(refund: {
     decidedBy: refund.decidedBy ?? undefined,
     decidedAt: refund.decidedAt?.toISOString(),
     createdAt: refund.createdAt.toISOString(),
+    gatewayRefundRef: refund.gatewayRefundRef ?? undefined,
+    gatewayStatus: refund.gatewayStatus ?? undefined,
   };
 }
 
@@ -168,11 +172,38 @@ const refundRoutes: FastifyPluginAsync = async (app) => {
         return sendProblem(reply, problems.conflict(`Refund is already ${refund.status.toLowerCase()}.`, "refund_already_decided"));
       }
 
+      // A payment made through Paystack is refunded through Paystack. Call it
+      // before recording the approval: if Paystack refuses, the refund stays
+      // PENDING and nothing on the invoice changes.
+      let gateway: { refundId: string; status: string } | null = null;
+      if (body.decision === "APPROVED") {
+        const payment = await prisma.payment.findFirst({ where: { id: refund.paymentId, tenantId } });
+        if (payment?.providerPaymentRef.startsWith("paystack_")) {
+          if (!env.PAYSTACK_SECRET_KEY) {
+            return sendProblem(reply, { status: 503, title: "Service Unavailable", detail: "Paystack is not configured on this service.", code: "paystack_not_configured" });
+          }
+          const charge = await prisma.paystackCharge.findFirst({ where: { tenantId, paymentId: payment.id } });
+          const transaction = charge?.reference ?? payment.providerPaymentRef.slice("paystack_".length);
+          try {
+            gateway = await createRefund(env.PAYSTACK_SECRET_KEY, { transaction, amountMinor: toMinorNumber(refund.amountMinor) });
+          } catch (err) {
+            request.log.error({ err, refundId: refund.id }, "Paystack refund failed");
+            const detail = err instanceof PaystackError ? err.message : "Could not reach Paystack.";
+            return sendProblem(reply, { status: 502, title: "Bad Gateway", detail: `Paystack did not accept the refund: ${detail} The refund is still pending.`, code: "paystack_refund_failed" });
+          }
+        }
+      }
+
       const now = new Date();
       const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const updated = await tx.refund.update({
           where: { id: refund.id },
-          data: { status: body.decision, decidedBy: actor, decidedAt: now },
+          data: {
+            status: body.decision,
+            decidedBy: actor,
+            decidedAt: now,
+            ...(gateway ? { gatewayRefundRef: gateway.refundId, gatewayStatus: gateway.status } : {}),
+          },
         });
 
         let invoiceSnapshot: { invoiceId: string; paidAmountMinor: bigint; status: string } | null = null;

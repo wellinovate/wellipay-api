@@ -54,3 +54,34 @@ export async function initializeTransaction(secret: string, input: InitializeInp
   }
   return { authorizationUrl: payload.data.authorization_url, accessCode: payload.data.access_code };
 }
+
+export interface RefundInput {
+  // The Paystack transaction reference (or numeric id) being refunded.
+  transaction: string;
+  amountMinor: number;
+}
+
+export interface RefundResult {
+  // Paystack's refund id.
+  refundId: string;
+  // pending | processing | needs-attention | processed | failed
+  status: string;
+}
+
+// Starts a refund on Paystack. Paystack reviews and pays it out to the
+// customer afterwards; status "pending" on return is normal.
+export async function createRefund(secret: string, input: RefundInput, fetchImpl: typeof fetch = fetch): Promise<RefundResult> {
+  const res = await fetchImpl(`${BASE_URL}/refund`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ transaction: input.transaction, amount: input.amountMinor }),
+  });
+  const payload = (await res.json().catch(() => null)) as { status?: boolean; message?: string; data?: { id?: number | string; status?: string } } | null;
+  if (!res.ok || !payload?.status || payload.data?.id === undefined || !payload.data.status) {
+    throw new PaystackError(payload?.message ?? `Paystack returned HTTP ${res.status}`);
+  }
+  if (payload.data.status === "failed") {
+    throw new PaystackError("Paystack could not process the refund.");
+  }
+  return { refundId: String(payload.data.id), status: payload.data.status };
+}
