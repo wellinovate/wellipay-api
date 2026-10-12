@@ -21,10 +21,30 @@ datasource db {
 // One row per organization issued API credentials — a provider backend,
 // or (later) another integration consumer. Matches "tenant" throughout
 // the contract docs.
+enum ProviderType {
+  HOSPITAL
+  DIAGNOSTIC_LAB
+  PHARMACY
+  INDEPENDENT_PRACTITIONER
+}
+
+enum ProviderApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model Tenant {
   id        String   @id @default(cuid())
   name      String
   createdAt DateTime @default(now())
+  providerType ProviderType? // null on tenants created before provider types existed; treated as HOSPITAL
+  // Paystack subaccount: when set, this provider's online payments settle to
+  // its own bank account instead of the platform account.
+  paystackSubaccountCode  String?
+  settlementBankCode      String?
+  settlementAccountNumber String?
+  settlementAccountName   String?
 
   credentials      ApiCredential[]
   invoices         Invoice[]
@@ -824,4 +844,33 @@ model PreAuthorization {
 
   @@index([tenantId, patientRef])
   @@map("pre_authorizations")
+}
+
+
+// A provider's request to join. It is not a tenant. A person at Wellinovate
+// reviews it and approves it with `npm run provider:approve`, which creates
+// the tenant, its Paystack subaccount and the first Admin sign-in.
+model ProviderApplication {
+  id            String                    @id @default(cuid())
+  businessName  String
+  providerType  ProviderType
+  contactName   String
+  contactEmail  String
+  contactPhone  String
+  address       String?
+  licenseNumber String?
+  bankCode      String
+  bankName      String?
+  accountNumber String
+  // Name the bank returned for the account number. The reviewer compares it
+  // with the business name before approving.
+  accountName   String
+  status        ProviderApplicationStatus @default(PENDING)
+  rejectionReason String?
+  tenantId      String?
+  createdAt     DateTime                  @default(now())
+  reviewedAt    DateTime?
+
+  @@index([status, createdAt])
+  @@map("provider_applications")
 }

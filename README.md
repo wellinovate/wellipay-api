@@ -87,3 +87,17 @@ curl -s -X POST http://localhost:3000/provider/invoices \
 - **Idempotency-Key vs. natural uniqueness are both enforced**, deliberately redundant: the Idempotency-Key guards the HTTP write itself (retry-safe), and a `@@unique([tenantId, providerInvoiceRef])`-style constraint guards the underlying business fact (two different idempotency keys can't create two invoices for the same provider-issued reference). Keep both when adding new writes.
 - **The outbox pattern is why `queueEvent()` always runs inside the same `$transaction` as the state change.** Never call `prisma.outboxEvent.create()` outside a transaction shared with the write that caused the event — that reopens the crash window the outbox exists to close.
 - **`request.auth.tenantId` is the only source of tenant identity.** Never trust a `tenantRef`/`facilityRef` read from a request body for authorization decisions — only for filtering after the tenant is already established from the token.
+
+
+## Provider onboarding and payouts
+
+Any provider (hospital, diagnostic lab, pharmacy, independent practitioner) joins in three steps:
+
+1. The provider applies with `POST /onboarding/applications` (public, rate-limited to 5 an hour per address). `GET /onboarding/banks` lists the banks for the form. The API asks the bank who owns the account number and returns that name.
+2. A person at Wellinovate reviews it in the Render shell:
+   - `npm run provider:list` shows pending applications and the account name the bank returned. Check that the name matches the business.
+   - `APPLICATION_ID=... ADMIN_PASSWORD='...' npm run provider:approve` creates the Paystack subaccount, the tenant and the first Admin sign-in.
+   - `APPLICATION_ID=... REASON='...' npm run provider:reject` rejects it.
+3. The provider signs in to the console with the contact email and the password you set.
+
+Online payments for a tenant with a Paystack subaccount settle to that provider's bank account. The provider bears Paystack's fee. `PLATFORM_FEE_PERCENT` is the share the platform keeps, set when a provider is approved. The first tenant, created by the seed script, has no subaccount and settles to the platform account.

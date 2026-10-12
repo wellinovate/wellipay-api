@@ -25,6 +25,9 @@ export interface InitializeInput {
   reference: string;
   callbackUrl?: string | undefined;
   metadata?: Record<string, unknown>;
+  // Provider's Paystack subaccount (ACCT_...). When set the payment settles to
+  // that provider, and the provider bears Paystack's fee.
+  subaccount?: string | null | undefined;
 }
 
 export interface InitializeResult {
@@ -46,6 +49,7 @@ export async function initializeTransaction(secret: string, input: InitializeInp
       reference: input.reference,
       ...(input.callbackUrl ? { callback_url: input.callbackUrl } : {}),
       ...(input.metadata ? { metadata: input.metadata } : {}),
+      ...(input.subaccount ? { subaccount: input.subaccount, bearer: "subaccount" } : {}),
     }),
   });
   const payload = (await res.json().catch(() => null)) as { status?: boolean; message?: string; data?: { authorization_url?: string; access_code?: string } } | null;
@@ -121,4 +125,64 @@ export async function listSettlements(
     payoutAmountMinor: Number(s.effective_amount ?? 0),
     settlementDate: s.settlement_date ?? s.createdAt ?? null,
   }));
+}
+
+async function paystackGet<T>(secret: string, path: string, fetchImpl: typeof fetch): Promise<T> {
+  const res = await fetchImpl(`${BASE_URL}${path}`, { headers: { Authorization: `Bearer ${secret}` } });
+  const payload = (await res.json().catch(() => null)) as { status?: boolean; message?: string; data?: T } | null;
+  if (!res.ok || !payload?.status || payload.data === undefined) {
+    throw new PaystackError(payload?.message ?? `Paystack returned HTTP ${res.status}`);
+  }
+  return payload.data;
+}
+
+export interface Bank {
+  name: string;
+  code: string;
+}
+
+// Nigerian banks Paystack can pay out to.
+export async function listBanks(secret: string, fetchImpl: typeof fetch = fetch): Promise<Bank[]> {
+  const rows = await paystackGet<Array<{ name?: string; code?: string }>>(secret, "/bank?country=nigeria&currency=NGN&perPage=200", fetchImpl);
+  return rows.filter((b) => b.name && b.code).map((b) => ({ name: b.name!, code: b.code! }));
+}
+
+// Asks the bank who owns an account number. Throws if the number is not valid
+// for that bank.
+export async function resolveAccount(
+  secret: string,
+  input: { accountNumber: string; bankCode: string },
+  fetchImpl: typeof fetch = fetch
+): Promise<{ accountName: string }> {
+  const qs = new URLSearchParams({ account_number: input.accountNumber, bank_code: input.bankCode });
+  const data = await paystackGet<{ account_name?: string }>(secret, `/bank/resolve?${qs.toString()}`, fetchImpl);
+  if (!data.account_name) throw new PaystackError("The bank did not return an account name.");
+  return { accountName: data.account_name };
+}
+
+export interface SubaccountInput {
+  businessName: string;
+  bankCode: string;
+  accountNumber: string;
+  // Share of each payment that stays with the platform, 0 to 100.
+  platformPercent: number;
+}
+
+// Creates the Paystack subaccount that a provider's payments settle into.
+export async function createSubaccount(secret: string, input: SubaccountInput, fetchImpl: typeof fetch = fetch): Promise<{ subaccountCode: string }> {
+  const res = await fetchImpl(`${BASE_URL}/subaccount`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      business_name: input.businessName,
+      bank_code: input.bankCode,
+      account_number: input.accountNumber,
+      percentage_charge: input.platformPercent,
+    }),
+  });
+  const payload = (await res.json().catch(() => null)) as { status?: boolean; message?: string; data?: { subaccount_code?: string } } | null;
+  if (!res.ok || !payload?.status || !payload.data?.subaccount_code) {
+    throw new PaystackError(payload?.message ?? `Paystack returned HTTP ${res.status}`);
+  }
+  return { subaccountCode: payload.data.subaccount_code };
 }
