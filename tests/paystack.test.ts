@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createHmac } from "node:crypto";
-import { verifyPaystackSignature, mapPaystackChannel, initializeTransaction, createRefund, PaystackError } from "../src/lib/paystack.js";
+import { verifyPaystackSignature, mapPaystackChannel, initializeTransaction, createRefund, listSettlements, PaystackError } from "../src/lib/paystack.js";
 
 const secret = "sk_test_example";
 const body = JSON.stringify({ event: "charge.success", data: { reference: "wp_1", amount: 5000 } });
@@ -77,5 +77,25 @@ describe("createRefund", () => {
   it("throws when Paystack reports the refund as failed", async () => {
     const fake = (async () => new Response(JSON.stringify({ status: true, data: { id: 1, status: "failed" } }))) as unknown as typeof fetch;
     await expect(createRefund(secret, { transaction: "wp_1", amountMinor: 1 }, fake)).rejects.toThrow(PaystackError);
+  });
+});
+
+describe("listSettlements", () => {
+  it("maps Paystack's settlement fields to kobo amounts and passes the date range", async () => {
+    let url = "";
+    const fake = (async (u: string) => {
+      url = u;
+      return new Response(JSON.stringify({ status: true, data: [{ id: 77, status: "success", total_amount: 10000, total_fees: 150, effective_amount: 9850, settlement_date: "2026-10-13T00:00:00.000Z" }] }));
+    }) as unknown as typeof fetch;
+    const rows = await listSettlements(secret, { from: "2026-10-01", to: "2026-10-31" }, fake);
+    expect(url).toContain("https://api.paystack.co/settlement?");
+    expect(url).toContain("from=2026-10-01");
+    expect(url).toContain("to=2026-10-31");
+    expect(rows).toEqual([{ id: "77", status: "success", totalAmountMinor: 10000, totalFeesMinor: 150, payoutAmountMinor: 9850, settlementDate: "2026-10-13T00:00:00.000Z" }]);
+  });
+
+  it("throws with Paystack's message on failure", async () => {
+    const fake = (async () => new Response(JSON.stringify({ status: false, message: "Invalid key" }), { status: 401 })) as unknown as typeof fetch;
+    await expect(listSettlements(secret, {}, fake)).rejects.toThrow("Invalid key");
   });
 });

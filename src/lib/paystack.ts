@@ -85,3 +85,40 @@ export async function createRefund(secret: string, input: RefundInput, fetchImpl
   }
   return { refundId: String(payload.data.id), status: payload.data.status };
 }
+
+export interface PaystackSettlement {
+  id: string;
+  status: string;
+  // What Paystack collected, the fees it kept, and what it paid out. All kobo.
+  totalAmountMinor: number;
+  totalFeesMinor: number;
+  payoutAmountMinor: number;
+  settlementDate: string | null;
+}
+
+// Lists payouts Paystack has made (or is making) to the business bank
+// account. Read-only. `from` and `to` are YYYY-MM-DD.
+export async function listSettlements(
+  secret: string,
+  range: { from?: string | undefined; to?: string | undefined },
+  fetchImpl: typeof fetch = fetch
+): Promise<PaystackSettlement[]> {
+  const qs = new URLSearchParams({ perPage: "100" });
+  if (range.from) qs.set("from", range.from);
+  if (range.to) qs.set("to", range.to);
+  const res = await fetchImpl(`${BASE_URL}/settlement?${qs.toString()}`, { headers: { Authorization: `Bearer ${secret}` } });
+  const payload = (await res.json().catch(() => null)) as
+    | { status?: boolean; message?: string; data?: Array<{ id?: number | string; status?: string; total_amount?: number; total_fees?: number; effective_amount?: number; settled_by?: string | null; settlement_date?: string | null; createdAt?: string }> }
+    | null;
+  if (!res.ok || !payload?.status || !Array.isArray(payload.data)) {
+    throw new PaystackError(payload?.message ?? `Paystack returned HTTP ${res.status}`);
+  }
+  return payload.data.map((s) => ({
+    id: String(s.id),
+    status: s.status ?? "unknown",
+    totalAmountMinor: Number(s.total_amount ?? 0),
+    totalFeesMinor: Number(s.total_fees ?? 0),
+    payoutAmountMinor: Number(s.effective_amount ?? 0),
+    settlementDate: s.settlement_date ?? s.createdAt ?? null,
+  }));
+}
