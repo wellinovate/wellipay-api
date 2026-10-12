@@ -5,7 +5,7 @@ import { env } from "../env.js";
 import { prisma } from "../lib/prisma.js";
 import { resolveActor } from "../lib/actor.js";
 import { toMinorBigInt, toMinorNumber } from "../lib/money.js";
-import { initializeTransaction, PaystackError } from "../lib/paystack.js";
+import { initializeTransaction, listSettlements, PaystackError } from "../lib/paystack.js";
 import { sendProblem, problems } from "../lib/problem.js";
 
 const createChargeSchema = z.object({
@@ -13,6 +13,11 @@ const createChargeSchema = z.object({
   email: z.string().email().max(160),
   // Defaults to the invoice's outstanding balance.
   amountMinor: z.number().int().min(100).optional(),
+});
+
+const settlementsQuerySchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "from must be YYYY-MM-DD").optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "to must be YYYY-MM-DD").optional(),
 });
 
 function serializeCharge(c: {
@@ -106,6 +111,58 @@ const paystackRoutes: FastifyPluginAsync = async (app) => {
       const charge = await prisma.paystackCharge.findFirst({ where: { reference, tenantId: request.auth!.tenantId } });
       if (!charge) return sendProblem(reply, problems.notFound());
       return reply.code(200).send(serializeCharge(charge));
+    }
+  );
+
+  // Paystack payouts next to what this system recorded as paid through
+  // Paystack in the same dates. Read-only. Payouts usually land a day or more
+  // after the payment, so totals match over a longer window, not day by day.
+  app.get(
+    "/provider/paystack/settlements",
+    { preHandler: app.requireScope("mobile.integration.read") },
+    async (request, reply) => {
+      const parsed = settlementsQuerySchema.safeParse(request.query);
+      if (!parsed.success) {
+        return sendProblem(reply, problems.badRequest(parsed.error.issues.map((i) => i.message).join("; "), "invalid_query"));
+      }
+      if (!env.PAYSTACK_SECRET_KEY) {
+        return sendProblem(reply, { status: 503, title: "Service Unavailable", detail: "Paystack is not configured on this service.", code: "paystack_not_configured" });
+      }
+      const tenantId = request.auth!.tenantId;
+      const { from, to } = parsed.data;
+
+      let settlements;
+      try {
+        settlements = await listSettlements(env.PAYSTACK_SECRET_KEY, { from, to });
+      } catch (err) {
+        request.log.error({ err }, "Paystack settlements failed");
+        const detail = err instanceof PaystackError ? err.message : "Could not reach Paystack.";
+        return sendProblem(reply, { status: 502, title: "Bad Gateway", detail, code: "paystack_unavailable" });
+      }
+
+      const recorded = await prisma.payment.aggregate({
+        where: {
+          tenantId,
+          status: "SUCCESS",
+          providerPaymentRef: { startsWith: "paystack_" },
+          ...(from || to ? { occurredAt: { ...(from ? { gte: new Date(`${from}T00:00:00Z`) } : {}), ...(to ? { lte: new Date(`${to}T23:59:59.999Z`) } : {}) } } : {}),
+        },
+        _sum: { amountMinor: true },
+        _count: true,
+      });
+
+      const paidOutMinor = settlements.reduce((sum, s) => sum + s.payoutAmountMinor, 0);
+      const feesMinor = settlements.reduce((sum, s) => sum + s.totalFeesMinor, 0);
+      return reply.code(200).send({
+        currency: "NGN",
+        settlements,
+        totals: {
+          paidOutMinor,
+          feesMinor,
+          recordedPaymentsCount: recorded._count,
+          recordedPaymentsMinor: toMinorNumber(recorded._sum.amountMinor ?? 0n),
+        },
+      });
     }
   );
 };
