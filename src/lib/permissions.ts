@@ -71,6 +71,7 @@ export const ROUTE_RULES: ReadonlyArray<readonly [string, string, Levels]> = [
 
   ["GET", "/provider/paystack/charges/:reference", EVERYONE],
   ["POST", "/provider/paystack/charges", FRONT_DESK],
+  ["GET", "/provider/paystack/settlements", FINANCE_VIEW],
 
   ["GET", "/provider/payments", EVERYONE],
   ["POST", "/provider/payments", FRONT_DESK],
