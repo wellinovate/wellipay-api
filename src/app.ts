@@ -31,6 +31,7 @@ import claimReconciliationRoutes from "./routes/claimReconciliation.js";
 import episodeRoutes from "./routes/episodes.js";
 import paystackRoutes from "./routes/paystack.js";
 import paystackWebhookRoutes from "./routes/paystackWebhook.js";
+import onboardingRoutes from "./routes/onboarding.js";
 import { sendProblem, problems } from "./lib/problem.js";
 import { env } from "./env.js";
 
@@ -111,6 +112,7 @@ export function buildApp() {
   app.register(episodeRoutes);
   app.register(paystackRoutes);
   app.register(paystackWebhookRoutes);
+  app.register(onboardingRoutes);
 
   app.setNotFoundHandler((request, reply) => {
     sendProblem(reply, problems.notFound("No route matches this path and method."));

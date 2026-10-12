@@ -31,5 +31,8 @@ services:
       # Paystack secret key (sk_live_...). Set in the dashboard, never in git.
       - key: PAYSTACK_SECRET_KEY
         sync: false
+      # Share of each provider payment the platform keeps, in percent.
+      - key: PLATFORM_FEE_PERCENT
+        value: "0"
       - key: WEBHOOK_MAX_ATTEMPTS
         value: "8"

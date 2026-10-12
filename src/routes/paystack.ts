@@ -81,6 +81,7 @@ const paystackRoutes: FastifyPluginAsync = async (app) => {
           reference,
           callbackUrl: env.PAYSTACK_CALLBACK_URL,
           metadata: { invoiceId: invoice.id, tenantId },
+          subaccount: (await prisma.tenant.findUnique({ where: { id: tenantId }, select: { paystackSubaccountCode: true } }))?.paystackSubaccountCode ?? null,
         });
       } catch (err) {
         request.log.error({ err }, "Paystack initialize failed");

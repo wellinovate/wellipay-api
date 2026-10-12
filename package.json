@@ -16,6 +16,9 @@
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
     "staff:set-password": "node dist/scripts/setStaffPassword.js",
+    "provider:list": "node dist/scripts/providerApplications.js list",
+    "provider:approve": "node dist/scripts/providerApplications.js approve",
+    "provider:reject": "node dist/scripts/providerApplications.js reject",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"

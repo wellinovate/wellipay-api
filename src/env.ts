@@ -37,6 +37,9 @@ const schema = z.object({
   // routes return 503 until it is set. Server-side only. It is also the key
   // Paystack signs webhooks with, so POST /webhooks/paystack needs it too.
   PAYSTACK_SECRET_KEY: z.string().min(1).optional(),
+  // Share of each provider payment kept by the platform, in percent (0-100).
+  // Applied when a provider is approved, so changing it affects new providers only.
+  PLATFORM_FEE_PERCENT: z.coerce.number().min(0).max(100).default(0),
   // Where Paystack sends the payer after checkout. Optional.
   PAYSTACK_CALLBACK_URL: z.string().url().optional(),
 });
