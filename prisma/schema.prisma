@@ -354,6 +354,12 @@ enum RefundStatus {
   REJECTED
 }
 
+enum RefundRecoveryStatus {
+  OWED
+  RECOVERED
+  WAIVED
+}
+
 // A request to reverse some or all of an existing Payment. The payment row
 // itself is never edited or deleted — approving a refund instead reverses
 // its effect on the invoice (paidAmountMinor decreases, status recomputes),
@@ -375,6 +381,12 @@ model Refund {
   // Set only when the money went back through Paystack.
   gatewayRefundRef  String?
   gatewayStatus     String?
+  // Set when the platform paid this refund out of its own Paystack balance for
+  // a payment that settled to the provider's subaccount. The provider owes the
+  // platform that amount until it is recovered or waived.
+  recoveryStatus    RefundRecoveryStatus?
+  recoveredAt       DateTime?
+  recoveryNote      String?
   createdAt         DateTime     @default(now())
 
   tenant  Tenant  @relation(fields: [tenantId], references: [id])

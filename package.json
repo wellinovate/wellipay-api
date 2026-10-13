@@ -19,6 +19,9 @@
     "provider:list": "node dist/scripts/providerApplications.js list",
     "provider:approve": "node dist/scripts/providerApplications.js approve",
     "provider:reject": "node dist/scripts/providerApplications.js reject",
+    "recovery:list": "node dist/scripts/refundRecoveries.js list",
+    "recovery:settle": "node dist/scripts/refundRecoveries.js settle",
+    "recovery:waive": "node dist/scripts/refundRecoveries.js waive",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"

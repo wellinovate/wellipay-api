@@ -101,3 +101,20 @@ Any provider (hospital, diagnostic lab, pharmacy, independent practitioner) join
 3. The provider signs in to the console with the contact email and the password you set.
 
 Online payments for a tenant with a Paystack subaccount settle to that provider's bank account. The provider bears Paystack's fee. `PLATFORM_FEE_PERCENT` is the share the platform keeps, set when a provider is approved. The first tenant, created by the seed script, has no subaccount and settles to the platform account.
+
+## Refunds on split payments
+
+A payment for a provider with a Paystack subaccount settles to the provider. Paystack takes a refund from the platform's own balance, not from the subaccount. Two things follow:
+
+- The platform's Paystack balance must hold at least the refund amount before a refund is approved. If it does not, Paystack answers "Insufficient balance to process refund" and the refund stays pending.
+- After the refund is approved, the provider owes the platform that amount. The refund is marked `recoveryStatus: OWED`.
+
+From the Render shell:
+
+```
+npm run recovery:list
+REFUND_ID=... NOTE='paid by bank transfer' npm run recovery:settle
+REFUND_ID=... NOTE='reason' npm run recovery:waive
+```
+
+These commands only change the record. They do not move money.

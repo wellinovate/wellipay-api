@@ -8,6 +8,7 @@ import { toMinorBigInt, toMinorNumber } from "../lib/money.js";
 import { resolveActor } from "../lib/actor.js";
 import { env } from "../env.js";
 import { createRefund, PaystackError } from "../lib/paystack.js";
+import { refundIsRecoverable } from "../lib/recovery.js";
 import type { Prisma } from "@prisma/client";
 
 const CREATE_ROUTE = "POST /provider/refunds";
@@ -16,6 +17,7 @@ function serializeRefund(refund: {
   id: string; providerRefundRef: string; paymentId: string; invoiceId: string; amountMinor: bigint;
   currency: string; reason: string; requestedBy: string; status: string; decidedBy: string | null;
   decidedAt: Date | null; createdAt: Date; gatewayRefundRef?: string | null; gatewayStatus?: string | null;
+  recoveryStatus?: string | null; recoveredAt?: Date | null;
 }) {
   return {
     refundId: refund.id,
@@ -32,6 +34,8 @@ function serializeRefund(refund: {
     createdAt: refund.createdAt.toISOString(),
     gatewayRefundRef: refund.gatewayRefundRef ?? undefined,
     gatewayStatus: refund.gatewayStatus ?? undefined,
+    recoveryStatus: refund.recoveryStatus ?? undefined,
+    recoveredAt: refund.recoveredAt?.toISOString(),
   };
 }
 
@@ -176,6 +180,7 @@ const refundRoutes: FastifyPluginAsync = async (app) => {
       // before recording the approval: if Paystack refuses, the refund stays
       // PENDING and nothing on the invoice changes.
       let gateway: { refundId: string; status: string } | null = null;
+      let recoverable = false;
       if (body.decision === "APPROVED") {
         const payment = await prisma.payment.findFirst({ where: { id: refund.paymentId, tenantId } });
         if (payment?.providerPaymentRef.startsWith("paystack_")) {
@@ -191,6 +196,8 @@ const refundRoutes: FastifyPluginAsync = async (app) => {
             const detail = err instanceof PaystackError ? err.message : "Could not reach Paystack.";
             return sendProblem(reply, { status: 502, title: "Bad Gateway", detail: `Paystack did not accept the refund: ${detail} The refund is still pending.`, code: "paystack_refund_failed" });
           }
+          const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { paystackSubaccountCode: true } });
+          recoverable = refundIsRecoverable(payment.providerPaymentRef, tenant?.paystackSubaccountCode);
         }
       }
 
@@ -203,6 +210,7 @@ const refundRoutes: FastifyPluginAsync = async (app) => {
             decidedBy: actor,
             decidedAt: now,
             ...(gateway ? { gatewayRefundRef: gateway.refundId, gatewayStatus: gateway.status } : {}),
+            ...(recoverable ? { recoveryStatus: "OWED" as const } : {}),
           },
         });
 
