@@ -209,3 +209,24 @@ Migration `20261014080000_invoice_lines_results` is hand-written SQL.
 - `POST /provider/bookings/:id/reminder` with `{ "message" }` texts the patient. Only for a booking that is still `BOOKED`. Returns 503 until the key is set, 422 when the patient has no usable phone, and 409 if a reminder went out in the last 15 minutes. The booking records `reminderSentAt`.
 
 Migration `20261014090000_booking_reminder` is hand-written SQL.
+
+## Guest payment, patient payment and transaction history
+
+Two ways to pay. Both start a Paystack checkout. Paystack's signed webhook is the only thing that marks a bill paid. A browser redirect proves nothing.
+
+**Pay as a guest (no account).**
+- `POST /provider/invoices/:id/pay-link` (staff) returns a `payToken` for the invoice. Send `{ "rotate": true }` to replace it and stop the old link working. The link is `<pay page>?t=<payToken>`.
+- `GET /public/pay/:token` shows the provider, the bill and the balance. It shows the patient's first name only.
+- `POST /public/pay/:token/charge` with `email`, optional `phone` and optional `amountMinor` (default: the balance) returns `authorizationUrl`, `reference` and a `claimCode`.
+- `GET /public/pay/:token/charges/:reference` returns the status and receipt details. It shows the `claimCode` while the payment is pending or paid.
+- These routes are rate limited per IP. Set `PAY_PAGE_URL` to the public pay page so guests return to it after checkout.
+
+**Pay as a signed-in patient.**
+- `POST /patient/paystack/charges` with `invoiceId`, optional `email` (else the one on file) and optional `amountMinor`.
+- `GET /patient/transactions` lists every payment attempt on the patient's bills, plus guest payments they claimed. Filter with `status`. Each row has `transactionId`, `reference`, `processor`, the provider, the bill, `status` (`PENDING`, `SUCCESS`, `FAILED`), `refundStatus` (`NONE`, `PENDING`, `REFUNDED`) and the bill's lines when it has them.
+- `GET /patient/transactions/:reference` returns one row.
+- `POST /patient/transactions/claim` with `claimCode` adds a guest payment to the patient's profile. It works within the same provider only, and a payment can belong to one profile.
+
+Settlement status per payment is not tracked yet. Paystack is the only processor.
+
+Migration `20261014100000_guest_and_patient_pay` is hand-written SQL.

@@ -46,6 +46,8 @@ const schema = z.object({
   TERMII_API_KEY: z.string().min(1).optional(),
   TERMII_SENDER_ID: z.string().min(3).max(11).default("N-Alert"),
   TERMII_CHANNEL: z.enum(["generic", "dnd", "whatsapp"]).default("dnd"),
+  // Public payment page (the console site's pay.html). Guests are sent back here after checkout.
+  PAY_PAGE_URL: z.string().url().optional(),
   // Where Paystack sends the payer after checkout. Optional.
   PAYSTACK_CALLBACK_URL: z.string().url().optional(),
 });

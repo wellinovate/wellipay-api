@@ -127,6 +127,8 @@ model Invoice {
   metadata            Json?
   // Set when the invoice is billed to a company on account instead of the patient.
   corporateAccountId  String?
+  // Unguessable token in the invoice's payment link. Anyone holding the link can pay this invoice.
+  payToken            String?               @unique
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
 
@@ -324,10 +326,18 @@ model PaystackCharge {
   // Set when a sponsor is paying a family funding pledge through this charge.
   fundingContributionId String?
   createdBy        String? // staff actor, as resolved from the token
+  // Who started it: PROVIDER (staff), PATIENT (signed-in patient) or GUEST (payment link).
+  source           String               @default("PROVIDER")
+  // Set when a signed-in patient paid, or later claimed a guest payment.
+  payerPatientRef  String?
+  payerPhone       String?
+  // Shown once on a guest receipt. A patient enters it to add the payment to their profile.
+  claimCode        String?              @unique
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
 
   @@index([tenantId, invoiceId])
+  @@index([tenantId, payerPatientRef])
   @@map("paystack_charges")
 }
 
