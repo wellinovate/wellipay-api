@@ -1,0 +1,86 @@
+import type { FastifyPluginAsync } from "fastify";
+import { createServiceItemSchema, updateServiceItemSchema, listServiceItemsQuerySchema } from "../schemas/serviceItems.js";
+import { prisma } from "../lib/prisma.js";
+import { sendProblem, problems } from "../lib/problem.js";
+import { resolveActor } from "../lib/actor.js";
+
+function serialize(row: { id: string; name: string; category: string | null; unitPriceMinor: number; active: boolean; createdAt: Date; updatedAt: Date }) {
+  return {
+    serviceItemId: row.id,
+    name: row.name,
+    category: row.category ?? undefined,
+    unitPriceMinor: row.unitPriceMinor,
+    active: row.active,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+const serviceItemRoutes: FastifyPluginAsync = async (app) => {
+  app.get("/provider/service-items", { preHandler: app.requireScope("mobile.integration.read") }, async (request, reply) => {
+    const parsed = listServiceItemsQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      return sendProblem(reply, problems.badRequest(parsed.error.issues.map((i) => i.message).join("; "), "invalid_query"));
+    }
+    const { q, includeInactive } = parsed.data;
+    const rows = await prisma.serviceItem.findMany({
+      where: {
+        tenantId: request.auth!.tenantId,
+        ...(includeInactive ? {} : { active: true }),
+        ...(q ? { name: { contains: q, mode: "insensitive" as const } } : {}),
+      },
+      orderBy: [{ category: "asc" }, { name: "asc" }],
+      take: 500,
+    });
+    return reply.code(200).send({ items: rows.map(serialize) });
+  });
+
+  app.post("/provider/service-items", { preHandler: app.requireScope("mobile.integration.write") }, async (request, reply) => {
+    const parsed = createServiceItemSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return sendProblem(reply, problems.badRequest(parsed.error.issues.map((i) => i.message).join("; "), "invalid_body"));
+    }
+    const tenantId = request.auth!.tenantId;
+    const body = parsed.data;
+    const clash = await prisma.serviceItem.findUnique({ where: { tenantId_name: { tenantId, name: body.name } } });
+    if (clash) return sendProblem(reply, problems.conflict(`"${body.name}" is already on the price list.`, "service_item_exists"));
+    const created = await prisma.serviceItem.create({
+      data: {
+        tenantId,
+        name: body.name,
+        category: body.category ?? null,
+        unitPriceMinor: body.unitPriceMinor,
+        createdBy: resolveActor(request.auth, undefined) ?? null,
+      },
+    });
+    return reply.code(201).send(serialize(created));
+  });
+
+  app.patch("/provider/service-items/:id", { preHandler: app.requireScope("mobile.integration.write") }, async (request, reply) => {
+    const parsed = updateServiceItemSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return sendProblem(reply, problems.badRequest(parsed.error.issues.map((i) => i.message).join("; "), "invalid_body"));
+    }
+    const tenantId = request.auth!.tenantId;
+    const { id } = request.params as { id: string };
+    const existing = await prisma.serviceItem.findFirst({ where: { id, tenantId } });
+    if (!existing) return sendProblem(reply, problems.notFound("Price list item not found."));
+    const body = parsed.data;
+    if (body.name && body.name !== existing.name) {
+      const clash = await prisma.serviceItem.findUnique({ where: { tenantId_name: { tenantId, name: body.name } } });
+      if (clash) return sendProblem(reply, problems.conflict(`"${body.name}" is already on the price list.`, "service_item_exists"));
+    }
+    const updated = await prisma.serviceItem.update({
+      where: { id },
+      data: {
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.category !== undefined ? { category: body.category } : {}),
+        ...(body.unitPriceMinor !== undefined ? { unitPriceMinor: body.unitPriceMinor } : {}),
+        ...(body.active !== undefined ? { active: body.active } : {}),
+      },
+    });
+    return reply.code(200).send(serialize(updated));
+  });
+};
+
+export default serviceItemRoutes;

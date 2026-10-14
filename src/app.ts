@@ -10,6 +10,7 @@ import invoiceRoutes from "./routes/invoices.js";
 import paymentRoutes from "./routes/payments.js";
 import patientRoutes from "./routes/patients.js";
 import patientRecordRoutes from "./routes/patientRecords.js";
+import serviceItemRoutes from "./routes/serviceItems.js";
 import claimRoutes from "./routes/claims.js";
 import familyFundingRoutes from "./routes/familyFunding.js";
 import eligibilityRoutes from "./routes/eligibility.js";
@@ -92,6 +93,7 @@ export function buildApp() {
   app.register(paymentRoutes);
   app.register(patientRoutes);
   app.register(patientRecordRoutes);
+  app.register(serviceItemRoutes);
   app.register(claimRoutes);
   app.register(familyFundingRoutes);
   app.register(eligibilityRoutes);
