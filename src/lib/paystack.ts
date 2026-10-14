@@ -36,6 +36,8 @@ export interface InitializeResult {
 }
 
 export class PaystackError extends Error {}
+// Paystack answered and said no. Nothing was charged.
+export class PaystackDeclined extends PaystackError {}
 
 // Amounts are kobo, which is what Paystack expects, so no conversion.
 export async function initializeTransaction(secret: string, input: InitializeInput, fetchImpl: typeof fetch = fetch): Promise<InitializeResult> {
@@ -128,12 +130,13 @@ export interface PaystackSettlement {
 // account. Read-only. `from` and `to` are YYYY-MM-DD.
 export async function listSettlements(
   secret: string,
-  range: { from?: string | undefined; to?: string | undefined },
+  range: { from?: string | undefined; to?: string | undefined; subaccount?: string | null | undefined },
   fetchImpl: typeof fetch = fetch
 ): Promise<PaystackSettlement[]> {
   const qs = new URLSearchParams({ perPage: "100" });
   if (range.from) qs.set("from", range.from);
   if (range.to) qs.set("to", range.to);
+  if (range.subaccount) qs.set("subaccount", range.subaccount);
   const res = await fetchImpl(`${BASE_URL}/settlement?${qs.toString()}`, { headers: { Authorization: `Bearer ${secret}` } });
   const payload = (await res.json().catch(() => null)) as
     | { status?: boolean; message?: string; data?: Array<{ id?: number | string; status?: string; total_amount?: number; total_fees?: number; effective_amount?: number; settled_by?: string | null; settlement_date?: string | null; createdAt?: string }> }
@@ -149,6 +152,64 @@ export async function listSettlements(
     payoutAmountMinor: Number(s.effective_amount ?? 0),
     settlementDate: s.settlement_date ?? s.createdAt ?? null,
   }));
+}
+
+export interface SettlementTransaction {
+  reference: string;
+  id: string | null;
+}
+
+// The transactions inside one payout. Read-only. `page` starts at 1.
+export async function listSettlementTransactions(
+  secret: string,
+  settlementId: string,
+  page: number,
+  fetchImpl: typeof fetch = fetch
+): Promise<{ items: SettlementTransaction[]; hasMore: boolean }> {
+  const perPage = 100;
+  const rows = await paystackGet<Array<{ reference?: string; id?: number | string }>>(
+    secret,
+    `/settlement/${encodeURIComponent(settlementId)}/transactions?${new URLSearchParams({ perPage: String(perPage), page: String(page) }).toString()}`,
+    fetchImpl
+  );
+  if (!Array.isArray(rows)) throw new PaystackError("Paystack returned an unexpected transaction list.");
+  return {
+    items: rows.filter((r) => r.reference).map((r) => ({ reference: String(r.reference), id: r.id !== undefined ? String(r.id) : null })),
+    hasMore: rows.length >= perPage,
+  };
+}
+
+export interface ChargeAuthorizationInput {
+  email: string;
+  amountMinor: number;
+  authorizationCode: string;
+  reference: string;
+  metadata?: Record<string, unknown>;
+  subaccount?: string | null | undefined;
+}
+
+// Charges a card the patient saved earlier. Paystack answers at once, but the
+// result is only trusted when the signed webhook arrives, as with any charge.
+export async function chargeAuthorization(secret: string, input: ChargeAuthorizationInput, fetchImpl: typeof fetch = fetch): Promise<{ status: string }> {
+  const res = await fetchImpl(`${BASE_URL}/transaction/charge_authorization`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: input.email,
+      amount: input.amountMinor,
+      currency: "NGN",
+      authorization_code: input.authorizationCode,
+      reference: input.reference,
+      ...(input.metadata ? { metadata: input.metadata } : {}),
+      ...(input.subaccount ? { subaccount: input.subaccount, bearer: "subaccount" } : {}),
+    }),
+  });
+  const payload = (await res.json().catch(() => null)) as { status?: boolean; message?: string; data?: { status?: string; gateway_response?: string } } | null;
+  if (!res.ok || !payload?.status || !payload.data?.status) {
+    throw new PaystackError(payload?.message ?? `Paystack returned HTTP ${res.status}`);
+  }
+  if (payload.data.status === "failed") throw new PaystackDeclined(payload.data.gateway_response ?? "The card was declined.");
+  return { status: payload.data.status };
 }
 
 async function paystackGet<T>(secret: string, path: string, fetchImpl: typeof fetch): Promise<T> {

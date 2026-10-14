@@ -2,11 +2,17 @@ import { buildApp } from "./app.js";
 import { env } from "./env.js";
 import { prisma } from "./lib/prisma.js";
 import { startWebhookWorker } from "./worker.js";
+import { startReminderWorker } from "./lib/reminderWorker.js";
 
 async function main() {
   const app = buildApp();
 
-  const stopWorker = startWebhookWorker(app.log);
+  const stopWebhooks = startWebhookWorker(app.log);
+  const stopReminders = startReminderWorker(app.log);
+  const stopWorker = () => {
+    stopWebhooks();
+    stopReminders();
+  };
 
   const shutdown = async (signal: string) => {
     app.log.info({ signal }, "Shutting down");

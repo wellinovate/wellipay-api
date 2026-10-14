@@ -13,6 +13,8 @@ const startBody = z.object({
   invoiceId: z.string().min(1),
   email: z.string().trim().email().max(160).optional(),
   amountMinor: z.number().int().min(100).optional(),
+  saveCard: z.boolean().optional(),
+  savedMethodId: z.string().min(1).optional(),
 });
 
 const listQuery = z.object({
@@ -76,13 +78,15 @@ const patientPayRoutes: FastifyPluginAsync = async (app) => {
     if (!invoice) return sendProblem(reply, problems.notFound());
     const record = await prisma.patientRecord.findUnique({ where: { tenantId_patientRef: { tenantId, patientRef } } });
     const email = parsed.data.email ?? record?.email ?? undefined;
-    if (!email) return sendProblem(reply, problems.unprocessable("Add an email address for your payment receipt.", "email_required"));
+    if (!email && !parsed.data.savedMethodId) return sendProblem(reply, problems.unprocessable("Add an email address for your payment receipt.", "email_required"));
     try {
       const charge = await startCharge({
         tenantId,
         invoiceId: invoice.id,
-        email,
+        email: email ?? "",
         amountMinor: parsed.data.amountMinor !== undefined ? BigInt(parsed.data.amountMinor) : undefined,
+        saveCard: parsed.data.saveCard,
+        savedMethodId: parsed.data.savedMethodId,
         source: "PATIENT",
         payerPatientRef: patientRef,
         callbackUrl: env.PAY_PAGE_URL ? `${env.PAY_PAGE_URL}?done=1` : undefined,

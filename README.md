@@ -230,3 +230,13 @@ Two ways to pay. Both start a Paystack checkout. Paystack's signed webhook is th
 Settlement status per payment is not tracked yet. Paystack is the only processor.
 
 Migration `20261014100000_guest_and_patient_pay` is hand-written SQL.
+
+## Settlement status, payment reminders, saved cards and wallet
+
+Settlement. Each successful Paystack payment carries a settlement state: AWAITING, PROCESSING, SETTLED or FAILED. Paystack sends no payout webhook, so `POST /provider/payments/settlement/sync` (Finance and Admin) reads the provider's payouts and the transactions inside each, and updates the matching payments. It needs the provider's subaccount. A payment never moves backwards. `GET /provider/payments/settlement` lists payments with fee, net amount and state, plus totals by state. Fees come from the `charge.success` webhook.
+
+Reminders. A patient sets one reminder per unpaid bill: `GET /patient/reminders`, `PUT` and `DELETE /patient/reminders/:invoiceId`. A worker checks every minute and sends an SMS through Termii at the chosen time. It needs `TERMII_API_KEY` and a phone number on the patient record. A failed send is retried for up to a day.
+
+Saved cards. A patient who ticks "save this card" on a payment gets the card stored after the webhook confirms the payment. Only Paystack's reusable token and the last four digits are kept. `GET /patient/payment-methods`, `DELETE /patient/payment-methods/:id`. `POST /patient/paystack/charges` accepts `saveCard` and `savedMethodId`. A saved-card payment is still confirmed by the webhook alone.
+
+Wallet. A wallet is prepaid credit with one provider. A top-up (`POST /patient/wallet/topups`) is an ordinary Paystack payment to the provider's subaccount, so the platform does not hold the money. The balance is what the provider owes the patient. `POST /patient/wallet/pay` spends credit on a bill and records a payment on the `wallet` channel. `GET /provider/wallet-summary` shows the total credit patients hold. Refunding unused credit is not built. Check with your lawyer or the CBN rules before you hold or move customer balances in any other way.
