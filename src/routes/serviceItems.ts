@@ -3,14 +3,17 @@ import { createServiceItemSchema, updateServiceItemSchema, listServiceItemsQuery
 import { prisma } from "../lib/prisma.js";
 import { sendProblem, problems } from "../lib/problem.js";
 import { resolveActor } from "../lib/actor.js";
+import { packageProblem } from "../lib/packages.js";
 
-function serialize(row: { id: string; name: string; category: string | null; unitPriceMinor: number; active: boolean; createdAt: Date; updatedAt: Date }) {
+function serialize(row: { id: string; name: string; category: string | null; unitPriceMinor: number; active: boolean; componentIds: string[]; createdAt: Date; updatedAt: Date }) {
   return {
     serviceItemId: row.id,
     name: row.name,
     category: row.category ?? undefined,
     unitPriceMinor: row.unitPriceMinor,
     active: row.active,
+    isPackage: row.componentIds.length > 0,
+    componentIds: row.componentIds,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -44,9 +47,16 @@ const serviceItemRoutes: FastifyPluginAsync = async (app) => {
     const body = parsed.data;
     const clash = await prisma.serviceItem.findUnique({ where: { tenantId_name: { tenantId, name: body.name } } });
     if (clash) return sendProblem(reply, problems.conflict(`"${body.name}" is already on the price list.`, "service_item_exists"));
+    const componentIds = body.componentIds ?? [];
+    if (componentIds.length > 0) {
+      const items = await prisma.serviceItem.findMany({ where: { tenantId }, select: { id: true, active: true, componentIds: true } });
+      const problem = packageProblem(componentIds, items);
+      if (problem) return sendProblem(reply, problems.unprocessable(problem, "invalid_package"));
+    }
     const created = await prisma.serviceItem.create({
       data: {
         tenantId,
+        componentIds,
         name: body.name,
         category: body.category ?? null,
         unitPriceMinor: body.unitPriceMinor,
@@ -70,9 +80,17 @@ const serviceItemRoutes: FastifyPluginAsync = async (app) => {
       const clash = await prisma.serviceItem.findUnique({ where: { tenantId_name: { tenantId, name: body.name } } });
       if (clash) return sendProblem(reply, problems.conflict(`"${body.name}" is already on the price list.`, "service_item_exists"));
     }
+    if (body.componentIds && body.componentIds.length > 0) {
+      const items = await prisma.serviceItem.findMany({ where: { tenantId }, select: { id: true, active: true, componentIds: true } });
+      const problem = packageProblem(body.componentIds, items, id);
+      if (problem) return sendProblem(reply, problems.unprocessable(problem, "invalid_package"));
+      const insideOther = await prisma.serviceItem.findFirst({ where: { tenantId, componentIds: { has: id } } });
+      if (insideOther) return sendProblem(reply, problems.unprocessable(`"${existing.name}" is part of "${insideOther.name}", so it cannot become a package.`, "invalid_package"));
+    }
     const updated = await prisma.serviceItem.update({
       where: { id },
       data: {
+        ...(body.componentIds !== undefined ? { componentIds: body.componentIds } : {}),
         ...(body.name !== undefined ? { name: body.name } : {}),
         ...(body.category !== undefined ? { category: body.category } : {}),
         ...(body.unitPriceMinor !== undefined ? { unitPriceMinor: body.unitPriceMinor } : {}),

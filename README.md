@@ -151,3 +151,13 @@ A sponsor can pay their pledge online instead of at the desk.
 `GET /provider/family-funding-requests` lists requests with their pledges and statuses. Filter with `invoiceId`.
 
 A pledge that is already paid is refused with `contribution_already_settled`. If a pledge was settled another way while a link was open, the money is still recorded as a payment and the pledge is left as it was.
+
+## Packages, bookings and corporate accounts
+
+For diagnostic centres and other providers that bill in bundles or on account.
+
+- Packages. `POST /provider/service-items` and `PATCH /provider/service-items/:id` take `componentIds`, the ids of the items inside a package. A package needs at least two active single items and cannot hold another package. It has its own price. Items return `isPackage` and `componentIds`.
+- Bookings. `POST /provider/bookings` records a `CENTRE_VISIT` or `HOME_COLLECTION` (a home collection needs an address) for a registered patient. `GET /provider/bookings` lists them, filtered by `status`, `from` and `to`. `PATCH /provider/bookings/:id` moves the status forward one step: `BOOKED`, `SAMPLE_COLLECTED`, `PROCESSING`, `READY`. A booking can be cancelled only while `BOOKED`.
+- Corporate accounts. `POST /provider/corporate-accounts` adds a company. `GET /provider/corporate-accounts` lists them with billed, paid and outstanding totals. `GET /provider/corporate-accounts/:id/statement` lists the account's invoices. To bill a company, send `corporateAccountId` on `POST /provider/invoices`.
+
+Reads are open to every staff level. Bookings are written by front desk levels and above. Packages and accounts are written by Billing, Finance and Admin.

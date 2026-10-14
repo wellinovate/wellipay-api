@@ -11,6 +11,8 @@ import paymentRoutes from "./routes/payments.js";
 import patientRoutes from "./routes/patients.js";
 import patientRecordRoutes from "./routes/patientRecords.js";
 import serviceItemRoutes from "./routes/serviceItems.js";
+import bookingRoutes from "./routes/bookings.js";
+import corporateAccountRoutes from "./routes/corporateAccounts.js";
 import claimRoutes from "./routes/claims.js";
 import familyFundingRoutes from "./routes/familyFunding.js";
 import eligibilityRoutes from "./routes/eligibility.js";
@@ -94,6 +96,8 @@ export function buildApp() {
   app.register(patientRoutes);
   app.register(patientRecordRoutes);
   app.register(serviceItemRoutes);
+  app.register(bookingRoutes);
+  app.register(corporateAccountRoutes);
   app.register(claimRoutes);
   app.register(familyFundingRoutes);
   app.register(eligibilityRoutes);
