@@ -3,6 +3,7 @@ import { env } from "../env.js";
 import { prisma } from "../lib/prisma.js";
 import { queueEvent } from "../lib/webhooks.js";
 import { toMinorNumber } from "../lib/money.js";
+import { fundingTotals } from "../lib/funding.js";
 import { mapPaystackChannel, verifyPaystackSignature } from "../lib/paystack.js";
 import type { Prisma } from "@prisma/client";
 
@@ -100,6 +101,35 @@ const paystackWebhookRoutes: FastifyPluginAsync = async (app) => {
         resourceRef: payment.id,
         data: { paymentRef: payment.id, invoiceId: invoice.id, amountMinor: toMinorNumber(charge.amountMinor), channel: payment.channel },
       });
+
+      // A sponsor's pledge: mark it paid and update the funding request. If
+      // the pledge was already settled another way, the money is still recorded
+      // above and only the pledge is left alone.
+      if (charge.fundingContributionId) {
+        const settled = await tx.fundingContribution.updateMany({
+          where: { id: charge.fundingContributionId, status: "PENDING" },
+          data: { status: "PAID", paidAt: new Date() },
+        });
+        if (settled.count === 1) {
+          const contribution = await tx.fundingContribution.findUnique({ where: { id: charge.fundingContributionId } });
+          if (contribution) {
+            const siblings = await tx.fundingContribution.findMany({ where: { requestId: contribution.requestId } });
+            const { totalPaid, status } = fundingTotals(siblings, contribution.id, charge.amountMinor);
+            const fundingRequest = await tx.familyFundingRequest.update({
+              where: { id: contribution.requestId },
+              data: { fundedAmountMinor: totalPaid, status },
+            });
+            await queueEvent(tx, {
+              tenantId: charge.tenantId,
+              eventType: "family.contribution.updated",
+              resourceRef: fundingRequest.id,
+              data: { requestRef: fundingRequest.id, status: fundingRequest.status, fundedAmountMinor: toMinorNumber(fundingRequest.fundedAmountMinor) },
+            });
+          }
+        } else {
+          request.log.warn({ reference, fundingContributionId: charge.fundingContributionId }, "Pledge already settled when Paystack charge succeeded");
+        }
+      }
     });
 
     return reply.code(200).send();

@@ -5,6 +5,7 @@ import { checkIdempotency, storeIdempotentResponse } from "../lib/idempotency.js
 import { queueEvent } from "../lib/webhooks.js";
 import { sendProblem, problems } from "../lib/problem.js";
 import { toMinorBigInt, toMinorNumber } from "../lib/money.js";
+import { fundingTotals } from "../lib/funding.js";
 import type { Prisma } from "@prisma/client";
 
 const ROUTE = "POST /provider/payments";
@@ -125,13 +126,7 @@ const paymentRoutes: FastifyPluginAsync = async (app) => {
           });
 
           const siblings = await tx.fundingContribution.findMany({ where: { requestId: contribution.requestId } });
-          const totalPledged = siblings.reduce((sum: bigint, c: { amountMinor: bigint }) => sum + c.amountMinor, 0n);
-          const totalPaid = siblings.reduce(
-            (sum: bigint, c: { id: string; amountMinor: bigint; status: string }) =>
-              sum + (c.id === contribution!.id ? amountMinor : c.status === "PAID" ? c.amountMinor : 0n),
-            0n
-          );
-          const newRequestStatus = totalPaid >= totalPledged ? "FUNDED" : "OPEN";
+          const { totalPaid, status: newRequestStatus } = fundingTotals(siblings, contribution.id, amountMinor);
 
           const updatedRequest = await tx.familyFundingRequest.update({
             where: { id: contribution.requestId },
