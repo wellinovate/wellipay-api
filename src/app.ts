@@ -15,6 +15,8 @@ import catalogueRoutes from "./routes/catalogue.js";
 import resultRoutes from "./routes/results.js";
 import guestPayRoutes from "./routes/guestPay.js";
 import patientPayRoutes from "./routes/patientPay.js";
+import pharmacyProductRoutes from "./routes/pharmacyProducts.js";
+import pharmacyInventoryRoutes from "./routes/pharmacyInventory.js";
 import patientCardRoutes from "./routes/patientCards.js";
 import patientWalletRoutes from "./routes/patientWallet.js";
 import patientReminderRoutes from "./routes/patientReminders.js";
@@ -109,6 +111,8 @@ export function buildApp() {
   app.register(resultRoutes);
   app.register(guestPayRoutes);
   app.register(patientPayRoutes);
+  app.register(pharmacyProductRoutes);
+  app.register(pharmacyInventoryRoutes);
   app.register(patientCardRoutes);
   app.register(patientWalletRoutes);
   app.register(patientReminderRoutes);

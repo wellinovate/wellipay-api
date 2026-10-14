@@ -102,6 +102,23 @@ export const ROUTE_RULES: ReadonlyArray<readonly [string, string, Levels]> = [
   ["POST", "/provider/paystack/charges", FRONT_DESK],
   ["GET", "/provider/paystack/settlements", FINANCE_VIEW],
 
+  // Pharmacy. Anyone can look. Changing the catalogue or stock is billing work and above.
+  ["GET", "/provider/pharmacy/products", EVERYONE],
+  ["GET", "/provider/pharmacy/products/:id", EVERYONE],
+  ["POST", "/provider/pharmacy/products", BILLING_WORK],
+  ["PATCH", "/provider/pharmacy/products/:id", BILLING_WORK],
+  ["GET", "/provider/pharmacy/services", EVERYONE],
+  ["POST", "/provider/pharmacy/services/offers", BILLING_WORK],
+  ["GET", "/provider/pharmacy/suppliers", EVERYONE],
+  ["POST", "/provider/pharmacy/suppliers", BILLING_WORK],
+  ["PATCH", "/provider/pharmacy/suppliers/:id", BILLING_WORK],
+  ["POST", "/provider/pharmacy/stock/receipts", BILLING_WORK],
+  ["POST", "/provider/pharmacy/stock/adjustments", BILLING_WORK],
+  ["POST", "/provider/pharmacy/stock/write-offs", BILLING_WORK],
+  ["POST", "/provider/pharmacy/batches/:id/quarantine", BILLING_WORK],
+  ["GET", "/provider/pharmacy/stock/movements", EVERYONE],
+  ["GET", "/provider/pharmacy/inventory/alerts", EVERYONE],
+
   ["GET", "/provider/payments", EVERYONE],
   ["POST", "/provider/payments", FRONT_DESK],
 
