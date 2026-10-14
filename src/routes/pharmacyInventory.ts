@@ -1,6 +1,8 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
+import { canSeeCost } from "../lib/costAccess.js";
+import { appendRegisterEntry, isControlledClass } from "../lib/controlledRegister.js";
 import { sendProblem, problems } from "../lib/problem.js";
 import { resolveActor } from "../lib/actor.js";
 import {
@@ -129,6 +131,10 @@ const pharmacyInventoryRoutes: FastifyPluginAsync = async (app) => {
       await tx.stockMovement.create({
         data: { tenantId, productId: product.id, batchId: row.id, kind: "RECEIPT", quantity: b.quantity, ...(b.note !== undefined ? { note: b.note } : {}), ...(actor ? { actor } : {}) },
       });
+      if (isControlledClass(product.dispensingClass)) {
+        const supplier = b.supplierId ? await tx.supplier.findFirst({ where: { id: b.supplierId, tenantId }, select: { name: true } }) : null;
+        await appendRegisterEntry(tx, { tenantId, productId: product.id, productName: productDisplayName(product), batchNo: row.batchNo, kind: "RECEIPT", quantity: b.quantity, actor: actor ?? "system", supplierName: supplier?.name ?? null, note: b.note ?? null });
+      }
       return row;
     });
     return reply.code(201).send({
@@ -149,6 +155,9 @@ const pharmacyInventoryRoutes: FastifyPluginAsync = async (app) => {
     if (!batch) return sendProblem(reply, problems.notFound("Batch not found."));
     const problem = adjustmentProblem(batch.quantityOnHand, b.delta, b.reason, b.note);
     if (problem) return sendProblem(reply, problems.unprocessable(problem, "invalid_adjustment"));
+    const product = await prisma.pharmacyProduct.findFirst({ where: { id: batch.productId, tenantId } });
+    const controlled = !!product && isControlledClass(product.dispensingClass);
+    if (controlled && !(b.note && b.note.trim().length >= 5)) return sendProblem(reply, problems.unprocessable("Explain a controlled-stock change in the note (at least 5 characters).", "note_required"));
     const actor = resolveActor(request.auth, undefined);
     // The guard in the update makes a second adjustment at the same moment fail instead of going below zero.
     const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -160,6 +169,7 @@ const pharmacyInventoryRoutes: FastifyPluginAsync = async (app) => {
       await tx.stockMovement.create({
         data: { tenantId, productId: batch.productId, batchId: batch.id, kind: "ADJUSTMENT", quantity: b.delta, reason: b.reason, ...(b.note !== undefined ? { note: b.note } : {}), ...(actor ? { actor } : {}) },
       });
+      if (controlled && product) await appendRegisterEntry(tx, { tenantId, productId: product.id, productName: productDisplayName(product), batchNo: batch.batchNo, kind: "ADJUSTMENT", quantity: b.delta, actor: actor ?? "system", reason: b.reason, note: b.note ?? null });
       return tx.stockBatch.findUnique({ where: { id: batch.id } });
     });
     if (!result) return sendProblem(reply, problems.conflict("The stock changed while you were adjusting it. Try again.", "stock_changed"));
@@ -178,6 +188,9 @@ const pharmacyInventoryRoutes: FastifyPluginAsync = async (app) => {
     if (b.reason === "EXPIRED" && expiryState(batch.expiryDate) !== "EXPIRED") {
       return sendProblem(reply, problems.unprocessable("This batch has not expired.", "not_expired"));
     }
+    const product = await prisma.pharmacyProduct.findFirst({ where: { id: batch.productId, tenantId } });
+    const controlled = !!product && isControlledClass(product.dispensingClass);
+    if (controlled && !(b.note && b.note.trim().length >= 5)) return sendProblem(reply, problems.unprocessable("Explain a controlled-stock write-off in the note (at least 5 characters).", "note_required"));
     const actor = resolveActor(request.auth, undefined);
     const qty = batch.quantityOnHand;
     const done = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -186,6 +199,7 @@ const pharmacyInventoryRoutes: FastifyPluginAsync = async (app) => {
       await tx.stockMovement.create({
         data: { tenantId, productId: batch.productId, batchId: batch.id, kind: "WRITE_OFF", quantity: -qty, reason: b.reason, ...(b.note !== undefined ? { note: b.note } : {}), ...(actor ? { actor } : {}) },
       });
+      if (controlled && product) await appendRegisterEntry(tx, { tenantId, productId: product.id, productName: productDisplayName(product), batchNo: batch.batchNo, kind: "WRITE_OFF", quantity: -qty, actor: actor ?? "system", reason: b.reason, note: b.note ?? null });
       return true;
     });
     if (!done) return sendProblem(reply, problems.conflict("The stock changed. Try again.", "stock_changed"));
@@ -266,7 +280,7 @@ const pharmacyInventoryRoutes: FastifyPluginAsync = async (app) => {
     expiringSoon.sort(byDays);
     return reply.code(200).send({
       nearExpiryDays: NEAR_EXPIRY_DAYS,
-      summary: { lowStock: lowStock.length, outOfStock: outOfStock.length, expired: expired.length, expiringSoon: expiringSoon.length, stockValueMinor },
+      summary: { lowStock: lowStock.length, outOfStock: outOfStock.length, expired: expired.length, expiringSoon: expiringSoon.length, ...(canSeeCost(request.auth) ? { stockValueMinor } : {}) },
       lowStock,
       outOfStock,
       expired,

@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
+import { canSeeCost } from "../lib/costAccess.js";
 import { sendProblem, problems } from "../lib/problem.js";
 import { resolveActor } from "../lib/actor.js";
 import { createProductSchema, updateProductSchema, listProductsQuery, serviceOffersSchema } from "../schemas/pharmacy.js";
@@ -38,7 +39,7 @@ interface BatchRow extends BatchLike {
   quarantineReason: string | null;
 }
 
-export function serializeBatch(b: BatchRow, today: Date = new Date()) {
+export function serializeBatch(b: BatchRow, today: Date = new Date(), showCost = false) {
   return {
     batchId: b.id,
     batchNo: b.batchNo,
@@ -47,7 +48,7 @@ export function serializeBatch(b: BatchRow, today: Date = new Date()) {
     daysToExpiry: daysToExpiry(b.expiryDate, today) ?? undefined,
     quantityReceived: b.quantityReceived,
     quantityOnHand: b.quantityOnHand,
-    costMinor: b.costMinor ?? undefined,
+    costMinor: showCost ? (b.costMinor ?? undefined) : undefined,
     supplierId: b.supplierId ?? undefined,
     status: b.status,
     quarantineReason: b.quarantineReason ?? undefined,
@@ -126,7 +127,7 @@ const pharmacyProductRoutes: FastifyPluginAsync = async (app) => {
     const row = await prisma.pharmacyProduct.findFirst({ where: { id, tenantId: request.auth!.tenantId }, include: { batches: { orderBy: [{ expiryDate: "asc" }, { receivedAt: "asc" }] } } });
     if (!row) return sendProblem(reply, problems.notFound("Product not found."));
     const today = new Date();
-    return reply.code(200).send({ ...serializeProduct(row, row.batches, today), batches: row.batches.map((b: BatchRow) => serializeBatch(b, today)) });
+    return reply.code(200).send({ ...serializeProduct(row, row.batches, today), batches: row.batches.map((b: BatchRow) => serializeBatch(b, today, canSeeCost(request.auth))) });
   });
 
   // A product also gets a price-list entry, so it can go on an invoice like any item.

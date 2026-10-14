@@ -128,6 +128,15 @@ export const ROUTE_RULES: ReadonlyArray<readonly [string, string, Levels]> = [
   ["POST", "/provider/pharmacy/orders/:id/dispense", FRONT_DESK], // pharmacist check and payment gate are in the route
   ["POST", "/provider/pharmacy/orders/:id/cancel", BILLING_WORK],
   ["PATCH", "/provider/pharmacy/orders/:id/delivery", FRONT_DESK],
+  ["POST", "/provider/pharmacy/orders/:id/ready", FRONT_DESK],
+  ["GET", "/provider/pharmacy/controlled-register", EVERYONE],
+  ["GET", "/provider/pharmacy/controlled-register/balances", EVERYONE],
+  ["GET", "/provider/pharmacy/couriers", EVERYONE],
+  ["POST", "/provider/pharmacy/couriers", BILLING_WORK],
+  ["PATCH", "/provider/pharmacy/couriers/:id", BILLING_WORK],
+  ["POST", "/provider/pharmacy/couriers/:id/rotate-secret", BILLING_WORK],
+  ["POST", "/provider/prescriptions/:id/images", FRONT_DESK],
+  ["GET", "/provider/prescriptions/:id/images/:imageId", EVERYONE],
 
   ["GET", "/provider/payments", EVERYONE],
   ["POST", "/provider/payments", FRONT_DESK],

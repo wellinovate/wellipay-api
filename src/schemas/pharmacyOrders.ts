@@ -51,6 +51,7 @@ export const createOrderSchema = z
 
 export const dispenseSchema = z.object({
   handedToName: text(120).optional(),
+  collectorId: text(60).optional(),
   overridePaymentReason: text(240).optional(),
 });
 
@@ -59,6 +60,8 @@ export const cancelOrderSchema = z.object({ reason: text(240).refine((v) => v.le
 export const deliverySchema = z.object({
   action: z.enum(["dispatch", "deliver", "fail"]),
   courierName: text(120).optional(),
+  courierId: z.string().min(1).optional(),
+  trackingRef: text(80).optional(),
   recipientName: text(120).optional(),
   proofCode: z.string().trim().regex(/^\d{6}$/, "The code is 6 digits.").optional(),
   note: text(300).optional(),
@@ -72,3 +75,40 @@ export const listOrdersQuery = z.object({
 });
 
 export const pharmacistSchema = z.object({ licenceNo: z.string().trim().min(3).max(40).nullable() });
+
+export const courierSchema = z.object({
+  name: text(120).refine((v) => v.length >= 2, "Name is too short."),
+  kind: z.enum(["OWN_RIDER", "PARTNER"]).default("OWN_RIDER"),
+  phone: text(30).optional(),
+  trackingUrlTemplate: z.string().trim().max(300).optional(),
+});
+
+export const updateCourierSchema = z
+  .object({
+    name: text(120).optional(),
+    phone: text(30).nullable().optional(),
+    trackingUrlTemplate: z.string().trim().max(300).nullable().optional(),
+    active: z.boolean().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, "Send at least one field to change.");
+
+export const courierEventSchema = z.object({
+  trackingRef: z.string().trim().min(1).max(80),
+  status: z.enum(["OUT_FOR_DELIVERY", "DELIVERED", "FAILED"]),
+  reason: z.string().trim().max(240).optional(),
+  recipientName: z.string().trim().max(120).optional(),
+  proofCode: z.string().trim().regex(/^\d{6}$/).optional(),
+});
+
+export const registerQuery = z.object({
+  productId: z.string().min(1).optional(),
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  format: z.enum(["json", "csv"]).default("json"),
+  limit: z.coerce.number().int().min(1).max(2000).default(200),
+});
+
+export const imageUploadSchema = z.object({
+  contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+  dataBase64: z.string().min(100),
+});

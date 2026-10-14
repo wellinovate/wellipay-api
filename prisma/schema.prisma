@@ -1380,7 +1380,8 @@ model Prescription {
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
 
-  items PrescriptionItem[]
+  items  PrescriptionItem[]
+  images PrescriptionImage[]
 
   @@index([tenantId, status, createdAt])
   @@index([tenantId, patientRef, createdAt])
@@ -1447,6 +1448,11 @@ model PharmacyOrder {
   dispensedAt           DateTime?
   handedToName          String?
   paymentOverrideReason String?
+  readyAt               DateTime?
+  readyBy               String?
+  courierId             String?
+  trackingRef           String?
+  trackingUrl           String?
   cancelReason          String?
   notes                 String?
   createdBy             String?
@@ -1491,4 +1497,103 @@ model DispenseRecord {
 
   @@index([tenantId, batchId])
   @@map("dispense_records")
+}
+
+// A photo of the paper prescription. Kept in the database so the pharmacist
+// can compare it with the items that were typed in.
+model PrescriptionImage {
+  id             String   @id @default(cuid())
+  tenantId       String
+  prescriptionId String
+  contentType    String
+  sizeBytes      Int
+  data           Bytes
+  uploadedBy     String?
+  createdAt      DateTime @default(now())
+
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+
+  @@index([prescriptionId])
+  @@map("prescription_images")
+}
+
+enum CourierKind {
+  OWN_RIDER
+  PARTNER
+}
+
+// A rider or delivery company the pharmacy uses. A partner that can call a
+// webhook gets a secret and can report status itself.
+model Courier {
+  id                 String      @id @default(cuid())
+  tenantId           String
+  name               String
+  kind               CourierKind @default(OWN_RIDER)
+  phone              String?
+  // Link to the courier's tracking page. {ref} is replaced with the tracking reference.
+  trackingUrlTemplate String?
+  webhookSecret      String?
+  active             Boolean     @default(true)
+  createdAt          DateTime    @default(now())
+
+  @@index([tenantId, active])
+  @@map("couriers")
+}
+
+enum NoticeStatus {
+  SENT
+  FAILED
+  SKIPPED
+}
+
+// Every SMS the pharmacy tries to send about an order, and what happened.
+model PharmacyNotice {
+  id        String       @id @default(cuid())
+  tenantId  String
+  orderId   String
+  event     String
+  phone     String?
+  status    NoticeStatus
+  error     String?
+  createdAt DateTime     @default(now())
+
+  @@index([orderId])
+  @@map("pharmacy_notices")
+}
+
+enum RegisterKind {
+  RECEIPT
+  DISPENSE
+  ADJUSTMENT
+  WRITE_OFF
+}
+
+// The controlled-drug register. Append-only: the database refuses updates and
+// deletes. balanceAfter is the product's total stock after the entry.
+model ControlledRegisterEntry {
+  id                  String       @id @default(cuid())
+  tenantId            String
+  productId           String
+  productName         String
+  batchNo             String
+  kind                RegisterKind
+  quantity            Int
+  balanceAfter        Int
+  patientRef          String?
+  patientName         String?
+  prescriptionId      String?
+  prescriberName      String?
+  prescriberLicenceNo String?
+  recipientName       String?
+  recipientId         String?
+  supplierName        String?
+  orderId             String?
+  reason              String?
+  note                String?
+  actor               String
+  createdAt           DateTime     @default(now())
+
+  @@index([tenantId, productId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("controlled_register_entries")
 }
