@@ -4,6 +4,7 @@ import { prisma } from "../lib/prisma.js";
 import { sendProblem, problems } from "../lib/problem.js";
 import { resolveActor } from "../lib/actor.js";
 import { canMoveBooking, type BookingStatusValue } from "../lib/bookings.js";
+import { pendingResults } from "../lib/results.js";
 
 function serialize(b: {
   id: string; patientRef: string; type: string; kind: string; scheduledAt: Date; address: string | null; notes: string | null;
@@ -93,6 +94,11 @@ const bookingRoutes: FastifyPluginAsync = async (app) => {
     if (body.invoiceId) {
       const invoice = await prisma.invoice.findFirst({ where: { id: body.invoiceId, tenantId } });
       if (!invoice) return sendProblem(reply, problems.unprocessable(`invoiceId "${body.invoiceId}" does not exist for this tenant.`, "unknown_invoice"));
+    }
+    if (body.status === "READY") {
+      const results = await prisma.bookingResult.findMany({ where: { bookingId: id, tenantId }, select: { status: true } });
+      const open = pendingResults(results);
+      if (open > 0) return sendProblem(reply, problems.conflict(`${open} result${open === 1 ? " is" : "s are"} not ready yet.`, "results_incomplete"));
     }
     const updated = await prisma.booking.update({
       where: { id },
