@@ -42,6 +42,10 @@ const schema = z.object({
   // Longest a staff member can stay signed in by renewing, in hours.
   SESSION_MAX_HOURS: z.coerce.number().min(1).max(72).default(8),
   PLATFORM_FEE_PERCENT: z.coerce.number().min(0).max(100).default(0),
+  // Termii SMS. Optional: the reminder route returns 503 until the key is set.
+  TERMII_API_KEY: z.string().min(1).optional(),
+  TERMII_SENDER_ID: z.string().min(3).max(11).default("N-Alert"),
+  TERMII_CHANNEL: z.enum(["generic", "dnd", "whatsapp"]).default("dnd"),
   // Where Paystack sends the payer after checkout. Optional.
   PAYSTACK_CALLBACK_URL: z.string().url().optional(),
 });
