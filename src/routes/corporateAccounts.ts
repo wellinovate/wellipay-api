@@ -80,7 +80,16 @@ const corporateAccountRoutes: FastifyPluginAsync = async (app) => {
       const clash = await prisma.corporateAccount.findUnique({ where: { tenantId_name: { tenantId, name: body.name } } });
       if (clash) return sendProblem(reply, problems.conflict(`"${body.name}" is already an account.`, "corporate_account_exists"));
     }
-    const updated = await prisma.corporateAccount.update({ where: { id }, data: body });
+    const updated = await prisma.corporateAccount.update({
+      where: { id },
+      data: {
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.contactName !== undefined ? { contactName: body.contactName } : {}),
+        ...(body.email !== undefined ? { email: body.email } : {}),
+        ...(body.phone !== undefined ? { phone: body.phone } : {}),
+        ...(body.active !== undefined ? { active: body.active } : {}),
+      },
+    });
     return reply.code(200).send(serialize(updated));
   });
 
