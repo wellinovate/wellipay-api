@@ -82,6 +82,8 @@ export const ROUTE_RULES: ReadonlyArray<readonly [string, string, Levels]> = [
   ["PATCH", "/provider/corporate-accounts/:id", BILLING_WORK],
   ["GET", "/provider/corporate-accounts/:id/statement", EVERYONE],
 
+  ["POST", "/provider/invoices/:id/pay-link", FRONT_DESK],
+
   ["GET", "/provider/service-items", EVERYONE],
   ["POST", "/provider/service-items", BILLING_WORK],
   ["PATCH", "/provider/service-items/:id", BILLING_WORK],
