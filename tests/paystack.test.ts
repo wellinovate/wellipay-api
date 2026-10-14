@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createHmac } from "node:crypto";
-import { verifyPaystackSignature, mapPaystackChannel, initializeTransaction, createRefund, listSettlements, PaystackError } from "../src/lib/paystack.js";
+import { verifyPaystackSignature, mapPaystackChannel, initializeTransaction, createRefund, listRefundsForTransaction, findGatewayRefund, listSettlements, PaystackError } from "../src/lib/paystack.js";
 
 const secret = "sk_test_example";
 const body = JSON.stringify({ event: "charge.success", data: { reference: "wp_1", amount: 5000 } });
@@ -97,5 +97,36 @@ describe("listSettlements", () => {
   it("throws with Paystack's message on failure", async () => {
     const fake = (async () => new Response(JSON.stringify({ status: false, message: "Invalid key" }), { status: 401 })) as unknown as typeof fetch;
     await expect(listSettlements(secret, {}, fake)).rejects.toThrow("Invalid key");
+  });
+});
+
+describe("listRefundsForTransaction", () => {
+  it("asks Paystack for refunds on one transaction and maps the rows", async () => {
+    let url = "";
+    const fake = (async (u: string) => {
+      url = u;
+      return new Response(JSON.stringify({ status: true, data: [{ id: 3018, status: "processed", amount: 10000 }, { status: "pending" }] }));
+    }) as unknown as typeof fetch;
+    const rows = await listRefundsForTransaction(secret, "wp_1", fake);
+    expect(url).toContain("https://api.paystack.co/refund?");
+    expect(url).toContain("reference=wp_1");
+    expect(rows).toEqual([{ refundId: "3018", status: "processed", amountMinor: 10000 }]);
+  });
+  it("throws when Paystack refuses", async () => {
+    const fake = (async () => new Response(JSON.stringify({ status: false, message: "nope" }), { status: 400 })) as unknown as typeof fetch;
+    await expect(listRefundsForTransaction(secret, "wp_1", fake)).rejects.toThrow("nope");
+  });
+});
+
+describe("findGatewayRefund", () => {
+  const items = [
+    { refundId: "1", status: "failed", amountMinor: 5 },
+    { refundId: "2", status: "processed", amountMinor: 5 },
+  ];
+  it("finds the refund by the id Paystack gave us", () => {
+    expect(findGatewayRefund(items, "2")?.status).toBe("processed");
+  });
+  it("returns nothing when it is not in the list", () => {
+    expect(findGatewayRefund(items, "9")).toBeUndefined();
   });
 });

@@ -90,6 +90,30 @@ export async function createRefund(secret: string, input: RefundInput, fetchImpl
   return { refundId: String(payload.data.id), status: payload.data.status };
 }
 
+export interface GatewayRefund {
+  refundId: string;
+  status: string;
+  amountMinor: number;
+}
+
+// Refunds Paystack holds for one transaction. Read-only.
+export async function listRefundsForTransaction(secret: string, transaction: string, fetchImpl: typeof fetch = fetch): Promise<GatewayRefund[]> {
+  const rows = await paystackGet<Array<{ id?: number | string; status?: string; amount?: number }>>(
+    secret,
+    `/refund?${new URLSearchParams({ reference: transaction, perPage: "50" }).toString()}`,
+    fetchImpl
+  );
+  if (!Array.isArray(rows)) throw new PaystackError("Paystack returned an unexpected refund list.");
+  return rows
+    .filter((r) => r.id !== undefined && r.status)
+    .map((r) => ({ refundId: String(r.id), status: String(r.status), amountMinor: Number(r.amount ?? 0) }));
+}
+
+// The refund we started, found by the id Paystack gave us when we created it.
+export function findGatewayRefund(items: GatewayRefund[], refundId: string): GatewayRefund | undefined {
+  return items.find((r) => r.refundId === refundId);
+}
+
 export interface PaystackSettlement {
   id: string;
   status: string;
