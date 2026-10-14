@@ -37,6 +37,7 @@ import eligibilityRoutes from "./routes/eligibility.js";
 import consentRoutes from "./routes/consents.js";
 import webhookEndpointRoutes from "./routes/webhookEndpoints.js";
 import refundRoutes from "./routes/refunds.js";
+import accountRoutes from "./routes/account.js";
 import reconciliationRoutes from "./routes/reconciliation.js";
 import staffRoutes from "./routes/staff.js";
 import paymentPlanRoutes from "./routes/paymentPlans.js";
@@ -139,6 +140,7 @@ export function buildApp() {
   app.register(consentRoutes);
   app.register(webhookEndpointRoutes);
   app.register(refundRoutes);
+  app.register(accountRoutes);
   app.register(reconciliationRoutes);
   app.register(staffRoutes);
   app.register(paymentPlanRoutes);

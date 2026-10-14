@@ -167,6 +167,10 @@ export const ROUTE_RULES: ReadonlyArray<readonly [string, string, Levels]> = [
   ["POST", "/provider/unmatched-transactions/:id/match", FINANCE_ONLY],
   ["POST", "/provider/unmatched-transactions/:id/exception", FINANCE_ONLY],
 
+  // Account: Finance can read the settlement account and refund limit. Only Admin changes the limit.
+  ["GET", "/provider/account", FINANCE_ONLY],
+  ["PATCH", "/provider/account/refund-limit", ADMIN_ONLY],
+
   // Staff directory and webhooks: Admin only.
   ["GET", "/provider/staff", ADMIN_ONLY],
   ["POST", "/provider/staff", ADMIN_ONLY],
