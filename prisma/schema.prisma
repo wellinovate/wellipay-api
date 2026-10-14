@@ -65,6 +65,7 @@ model Tenant {
   partners         Partner[]
   referrals        Referral[]
   patientAccounts  PatientAccount[]
+  patientRecords   PatientRecord[]
   hmoPolicies      HmoPolicy[]
   preAuthorizations PreAuthorization[]
 
@@ -885,4 +886,25 @@ model ProviderApplication {
 
   @@index([status, createdAt])
   @@map("provider_applications")
+}
+
+// A patient the provider has registered. Invoices refer to a patient by
+// patientRef, a free-text string; this table gives that reference a name and a
+// phone number so the console can list the provider's own patients.
+model PatientRecord {
+  id          String   @id @default(cuid())
+  tenantId    String
+  patientRef  String
+  fullName    String
+  phone       String?
+  email       String?
+  facilityRef String?
+  createdBy   String?
+  createdAt   DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, patientRef])
+  @@index([tenantId, createdAt])
+  @@map("patient_records")
 }

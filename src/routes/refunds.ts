@@ -7,7 +7,7 @@ import { sendProblem, problems } from "../lib/problem.js";
 import { toMinorBigInt, toMinorNumber } from "../lib/money.js";
 import { resolveActor } from "../lib/actor.js";
 import { env } from "../env.js";
-import { createRefund, PaystackError } from "../lib/paystack.js";
+import { createRefund, listRefundsForTransaction, findGatewayRefund, PaystackError } from "../lib/paystack.js";
 import { refundIsRecoverable } from "../lib/recovery.js";
 import type { Prisma } from "@prisma/client";
 
@@ -149,6 +149,42 @@ const refundRoutes: FastifyPluginAsync = async (app) => {
         items,
         nextCursor: hasMore ? rows[limit - 1]!.id : undefined,
       });
+    }
+  );
+
+  // Asks Paystack where a refund stands (pending, processing, processed,
+  // needs-attention, failed) and saves the answer. Read-only on Paystack's side.
+  app.post(
+    "/provider/refunds/:refundId/gateway-status",
+    { preHandler: app.requireScope("mobile.integration.read") },
+    async (request, reply) => {
+      const { refundId } = request.params as { refundId: string };
+      const tenantId = request.auth!.tenantId;
+      const refund = await prisma.refund.findFirst({ where: { id: refundId, tenantId } });
+      if (!refund) return sendProblem(reply, problems.notFound());
+      if (!refund.gatewayRefundRef) {
+        return sendProblem(reply, problems.unprocessable("This refund was not paid through Paystack.", "not_a_gateway_refund"));
+      }
+      if (!env.PAYSTACK_SECRET_KEY) {
+        return sendProblem(reply, { status: 503, title: "Service Unavailable", detail: "Paystack is not configured on this service.", code: "paystack_not_configured" });
+      }
+      const payment = await prisma.payment.findFirst({ where: { id: refund.paymentId, tenantId } });
+      const charge = payment ? await prisma.paystackCharge.findFirst({ where: { tenantId, paymentId: payment.id } }) : null;
+      const transaction = charge?.reference ?? payment?.providerPaymentRef.replace(/^paystack_/, "");
+      if (!transaction) return reply.code(200).send(serializeRefund(refund));
+
+      try {
+        const items = await listRefundsForTransaction(env.PAYSTACK_SECRET_KEY, transaction);
+        const found = findGatewayRefund(items, refund.gatewayRefundRef);
+        if (found && found.status !== refund.gatewayStatus) {
+          const updated = await prisma.refund.update({ where: { id: refund.id }, data: { gatewayStatus: found.status } });
+          return reply.code(200).send(serializeRefund(updated));
+        }
+      } catch (err) {
+        request.log.error({ err, refundId: refund.id }, "Paystack refund status lookup failed");
+        return sendProblem(reply, { status: 502, title: "Bad Gateway", detail: "Could not reach Paystack for the refund status.", code: "paystack_unavailable" });
+      }
+      return reply.code(200).send(serializeRefund(refund));
     }
   );
 
