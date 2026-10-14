@@ -274,3 +274,26 @@ Orders
 - `GET /patient/pharmacy-orders` shows status and delivery progress. The proof code shows only while a delivery is on its way.
 
 Not built: prescription photo upload, SMS when an order is ready or dispatched, courier integration, a controlled-drug register.
+
+## Pharmacy: photos, text messages, couriers, controlled-drug register, cost access
+
+Prescription photos
+- `POST /patient/prescriptions/:id/images` and `POST /provider/prescriptions/:id/images` take `{ contentType, dataBase64 }`. JPEG, PNG or WebP, 4 MB at most, 3 per prescription, only while the prescription is waiting for review. The type is read from the file's bytes.
+- `GET /provider/prescriptions/:id/images/:imageId` returns the picture (private, not cached). Prescription lists carry image ids and sizes only.
+
+Text messages (Termii, set `TERMII_API_KEY`)
+- `POST /provider/pharmacy/orders/:id/ready` marks an order packed. A pickup patient gets a text. Dispatch and delivery also send one. The text never contains the delivery code. Each attempt is recorded in `pharmacy_notices`. A failed text never blocks the order step.
+
+Couriers
+- `GET/POST/PATCH /provider/pharmacy/couriers`. Own riders need a name. A partner also gets a webhook secret, shown once (`POST .../rotate-secret` makes a new one). An optional tracking link template contains `{ref}`.
+- Dispatch accepts `courierId` and `trackingRef`. The patient sees the tracking link while the order is out for delivery.
+- Partners report to `POST /webhooks/courier/:courierId` with `x-wellipay-timestamp` and `x-wellipay-signature` (`sha256=` HMAC of `<timestamp>.<raw body>`). Body: `{ trackingRef, status: OUT_FOR_DELIVERY | DELIVERED | FAILED, reason?, recipientName?, proofCode? }`. A delivered report needs the patient's proof code. No specific courier company is integrated. A company that cannot call a webhook is used as an own rider and updated by staff.
+
+Controlled-drug register
+- `GET /provider/pharmacy/controlled-register` (filters `productId`, `from`, `to`, `format=csv`) and `/balances` (register against shelf stock).
+- Entries are written for every receipt, dispense, adjustment and write-off of a controlled medicine, with the balance after. A database trigger refuses updates and deletes. There is no write route.
+- A controlled pickup needs `collectorId`. A controlled adjustment or write-off needs a note.
+- Stock already on the shelf before the first entry shows as not matching until a movement is recorded.
+
+Cost access
+- Unit cost and stock value are returned only to Admin and Finance staff. Billing can enter a cost on a receipt but not read it back.

@@ -20,6 +20,10 @@ import pharmacyInventoryRoutes from "./routes/pharmacyInventory.js";
 import pharmacyPrescriptionRoutes from "./routes/pharmacyPrescriptions.js";
 import pharmacyOrderRoutes from "./routes/pharmacyOrders.js";
 import patientPharmacyRoutes from "./routes/patientPharmacy.js";
+import pharmacyRegisterRoutes from "./routes/pharmacyRegister.js";
+import pharmacyCourierRoutes from "./routes/pharmacyCouriers.js";
+import courierWebhookRoutes from "./routes/courierWebhook.js";
+import pharmacyImageRoutes from "./routes/pharmacyImages.js";
 import patientCardRoutes from "./routes/patientCards.js";
 import patientWalletRoutes from "./routes/patientWallet.js";
 import patientReminderRoutes from "./routes/patientReminders.js";
@@ -119,6 +123,9 @@ export function buildApp() {
   app.register(pharmacyPrescriptionRoutes);
   app.register(pharmacyOrderRoutes);
   app.register(patientPharmacyRoutes);
+  app.register(pharmacyRegisterRoutes);
+  app.register(pharmacyCourierRoutes);
+  app.register(pharmacyImageRoutes);
   app.register(patientCardRoutes);
   app.register(patientWalletRoutes);
   app.register(patientReminderRoutes);
@@ -148,6 +155,7 @@ export function buildApp() {
   app.register(episodeRoutes);
   app.register(paystackRoutes);
   app.register(paystackWebhookRoutes);
+  app.register(courierWebhookRoutes);
   app.register(onboardingRoutes);
 
   app.setNotFoundHandler((request, reply) => {

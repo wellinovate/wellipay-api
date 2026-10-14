@@ -43,7 +43,7 @@ async function chainState(tenantId: string, patientRef: string, rx: { id: string
 const patientPharmacyRoutes: FastifyPluginAsync = async (app) => {
   app.get("/patient/prescriptions", { preHandler: app.requirePatientScope("patient.self.read") }, async (request, reply) => {
     const { tenantId, patientRef } = request.patientAuth!;
-    const rows = (await prisma.prescription.findMany({ where: { tenantId, patientRef }, include: { items: true }, orderBy: { createdAt: "desc" }, take: 50 })) as RxRow[];
+    const rows = (await prisma.prescription.findMany({ where: { tenantId, patientRef }, include: { items: true, images: { select: { id: true, contentType: true, sizeBytes: true } } }, orderBy: { createdAt: "desc" }, take: 50 })) as RxRow[];
     const out = [];
     for (const r of rows) {
       const state = r.status === "COMPLETED" ? await chainState(tenantId, patientRef, r) : null;
@@ -140,6 +140,8 @@ const patientPharmacyRoutes: FastifyPluginAsync = async (app) => {
       deliveredAt: o.deliveredAt?.toISOString(),
       failureReason: o.deliveryStatus === "FAILED" ? (o.failureReason ?? undefined) : undefined,
       dispensedAt: o.dispensedAt?.toISOString(),
+      readyAt: o.readyAt?.toISOString(),
+      trackingUrl: o.fulfilment === "DELIVERY" && o.deliveryStatus === "OUT_FOR_DELIVERY" ? (o.trackingUrl ?? undefined) : undefined,
       createdAt: o.createdAt.toISOString(),
       // The code is shown only while a delivery is still on its way.
       proofCode: o.fulfilment === "DELIVERY" && o.status === "DISPENSED" && (o.deliveryStatus === "PENDING" || o.deliveryStatus === "OUT_FOR_DELIVERY") ? (o.proofCode ?? undefined) : undefined,

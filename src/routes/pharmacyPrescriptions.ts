@@ -23,6 +23,7 @@ export interface RxRow {
   refillOfId: string | null;
   createdAt: Date;
   items: { id: string; description: string; quantity: number; directions: string | null; productId: string | null }[];
+  images?: { id: string; contentType: string; sizeBytes: number }[];
 }
 
 export function serializePrescription(r: RxRow) {
@@ -43,6 +44,7 @@ export function serializePrescription(r: RxRow) {
     refillOfId: r.refillOfId ?? undefined,
     createdAt: r.createdAt.toISOString(),
     items: r.items.map((i) => ({ itemId: i.id, description: i.description, quantity: i.quantity, directions: i.directions ?? undefined, productId: i.productId ?? undefined })),
+    images: (r.images ?? []).map((i) => ({ imageId: i.id, contentType: i.contentType, sizeBytes: i.sizeBytes })),
   };
 }
 
@@ -70,7 +72,7 @@ const pharmacyPrescriptionRoutes: FastifyPluginAsync = async (app) => {
       where: { tenantId: request.auth!.tenantId, ...(parsed.data.status ? { status: parsed.data.status } : {}), ...(parsed.data.patientRef ? { patientRef: parsed.data.patientRef } : {}) },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: parsed.data.limit,
-      include: { items: true },
+      include: { items: true, images: { select: { id: true, contentType: true, sizeBytes: true } } },
     });
     return reply.code(200).send({ items: rows.map(serializePrescription) });
   });

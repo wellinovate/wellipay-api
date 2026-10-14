@@ -10,6 +10,10 @@ import { prescriptionUsable } from "../lib/prescriptions.js";
 import { anyNeedsPharmacist, coverageProblem, handoverProblem, paymentGate, type DispenseLine } from "../lib/dispensing.js";
 import { deliveryActionProblem, deliveryFeeFromLines, newProofCode, nextDeliveryStatus, proofProblem } from "../lib/delivery.js";
 import { requirePharmacist } from "./pharmacyPrescriptions.js";
+import { appendRegisterEntry, collectorIdProblem, isControlledClass } from "../lib/controlledRegister.js";
+import { trackingUrlFor } from "../lib/courier.js";
+import { sendOrderNotice } from "../lib/pharmacyNotice.js";
+import { productDisplayName } from "../lib/pharmacyProducts.js";
 
 class OrderError extends Error {
   status: number;
@@ -43,6 +47,10 @@ interface OrderRow {
   dispensedAt: Date | null;
   handedToName: string | null;
   paymentOverrideReason: string | null;
+  readyAt: Date | null;
+  courierId: string | null;
+  trackingRef: string | null;
+  trackingUrl: string | null;
   cancelReason: string | null;
   notes: string | null;
   createdAt: Date;
@@ -75,6 +83,10 @@ export function serializeOrder(o: OrderRow, invoiceStatus?: string) {
     dispensedAt: o.dispensedAt?.toISOString(),
     handedToName: o.handedToName ?? undefined,
     paymentOverrideReason: o.paymentOverrideReason ?? undefined,
+    readyAt: o.readyAt?.toISOString(),
+    courierId: o.courierId ?? undefined,
+    trackingRef: o.trackingRef ?? undefined,
+    trackingUrl: o.trackingUrl ?? undefined,
     cancelReason: o.cancelReason ?? undefined,
     notes: o.notes ?? undefined,
     createdAt: o.createdAt.toISOString(),
@@ -224,6 +236,10 @@ const pharmacyOrderRoutes: FastifyPluginAsync = async (app) => {
       dispensingClass: (productById.get(l.productId) as { dispensingClass: string } | undefined)?.dispensingClass ?? "OTC",
     }));
 
+    const hasControlled = lines.some((l) => isControlledClass(l.dispensingClass));
+    const idProblem = collectorIdProblem(order.fulfilment, hasControlled, b.collectorId);
+    if (idProblem) return sendProblem(reply, problems.unprocessable(idProblem, "collector_id_required"));
+    let rxRow: { prescriberName: string | null; prescriberLicenceNo: string | null } | null = null;
     let pharmacistLabel: string | null = null;
     if (anyNeedsPharmacist(lines)) {
       const pharmacist = await requirePharmacist(request, reply);
@@ -233,12 +249,14 @@ const pharmacyOrderRoutes: FastifyPluginAsync = async (app) => {
       const rx = await prisma.prescription.findFirst({ where: { id: order.prescriptionId, tenantId }, include: { items: true } });
       if (!rx || !prescriptionUsable(rx)) return sendProblem(reply, problems.conflict("The prescription is not verified, or it has expired.", "prescription_not_usable"));
       if (rx.patientRef !== order.patientRef) return sendProblem(reply, problems.unprocessable("The prescription belongs to a different patient.", "patient_mismatch"));
+      rxRow = { prescriberName: rx.prescriberName, prescriberLicenceNo: rx.prescriberLicenceNo };
       const cover = coverageProblem(lines, rx.items);
       if (cover) return sendProblem(reply, problems.unprocessable(cover, "prescription_mismatch"));
     }
     const handover = handoverProblem(order.fulfilment, b.handedToName);
     if (handover) return sendProblem(reply, problems.unprocessable(handover, "handover_required"));
     const actor = pharmacistLabel ?? resolveActor(request.auth, undefined) ?? "system";
+    const patientRow = hasControlled ? await prisma.patientRecord.findUnique({ where: { tenantId_patientRef: { tenantId, patientRef: order.patientRef } }, select: { fullName: true } }) : null;
 
     try {
       const done = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -267,6 +285,26 @@ const pharmacyOrderRoutes: FastifyPluginAsync = async (app) => {
             if (taken.count === 0) throw new OrderError(409, "stock_changed", `${line.description}: the stock changed. Try again.`);
             await tx.dispenseRecord.create({ data: { tenantId, orderLineId: line.id, productId: line.productId, batchId: a.batchId, quantity: a.quantity, dispensedBy: actor } });
             await tx.stockMovement.create({ data: { tenantId, productId: line.productId, batchId: a.batchId, kind: "DISPENSE", quantity: -a.quantity, reference: order.id, actor } });
+            const product = productById.get(line.productId) as { dispensingClass: string; genericName: string; brandName: string | null; strength: string | null; dosageForm: string | null; packSize: string | null; category: string } | undefined;
+            if (product && isControlledClass(product.dispensingClass)) {
+              await appendRegisterEntry(tx, {
+                tenantId,
+                productId: line.productId,
+                productName: productDisplayName({ ...product, dispensingClass: product.dispensingClass }),
+                batchNo: (batches.find((x: { id: string }) => x.id === a.batchId) as { batchNo: string }).batchNo,
+                kind: "DISPENSE",
+                quantity: -a.quantity,
+                actor,
+                patientRef: order.patientRef,
+                patientName: patientRow?.fullName ?? null,
+                prescriptionId: order.prescriptionId,
+                prescriberName: rxRow?.prescriberName ?? null,
+                prescriberLicenceNo: rxRow?.prescriberLicenceNo ?? null,
+                recipientName: b.handedToName ?? order.deliveryPhone ?? null,
+                recipientId: b.collectorId ?? null,
+                orderId: order.id,
+              });
+            }
           }
           await tx.pharmacyOrderLine.update({ where: { id: line.id }, data: { dispensed: line.quantity } });
         }
@@ -278,6 +316,21 @@ const pharmacyOrderRoutes: FastifyPluginAsync = async (app) => {
       if (err instanceof OrderError) return sendOrderError(reply, err);
       throw err;
     }
+  });
+
+  // The order is packed and waiting. For a pickup the patient gets a text.
+  app.post("/provider/pharmacy/orders/:id/ready", { preHandler: app.requireScope("mobile.integration.write") }, async (request, reply) => {
+    const tenantId = request.auth!.tenantId;
+    const { id } = request.params as { id: string };
+    const actor = resolveActor(request.auth, undefined) ?? "system";
+    const changed = await prisma.pharmacyOrder.updateMany({ where: { id, tenantId, status: "AWAITING_DISPENSING", readyAt: null }, data: { readyAt: new Date(), readyBy: actor } });
+    if (changed.count === 0) {
+      const exists = await prisma.pharmacyOrder.findFirst({ where: { id, tenantId } });
+      return sendProblem(reply, exists ? problems.conflict("Only an order waiting to be dispensed, not yet marked ready, can be marked ready.", "order_not_open") : problems.notFound("Order not found."));
+    }
+    const row = await prisma.pharmacyOrder.findUnique({ where: { id }, include: { lines: true } });
+    if (row) void sendOrderNotice(row, "READY", request.log);
+    return reply.code(200).send(serializeOrder(row as OrderRow));
   });
 
   app.post("/provider/pharmacy/orders/:id/cancel", { preHandler: app.requireScope("mobile.integration.write") }, async (request, reply) => {
@@ -309,6 +362,9 @@ const pharmacyOrderRoutes: FastifyPluginAsync = async (app) => {
     let data: {
       deliveryStatus: "PENDING" | "OUT_FOR_DELIVERY" | "DELIVERED" | "FAILED";
       courierName?: string;
+      courierId?: string | null;
+      trackingRef?: string | null;
+      trackingUrl?: string | null;
       dispatchedAt?: Date;
       failureReason?: string | null;
       deliveredAt?: Date;
@@ -316,8 +372,16 @@ const pharmacyOrderRoutes: FastifyPluginAsync = async (app) => {
       deliveryNote?: string | null;
     };
     if (b.action === "dispatch") {
-      if (!(b.courierName && b.courierName.trim().length >= 2)) return sendProblem(reply, problems.unprocessable("Enter the courier or rider's name.", "courier_required"));
-      data = { deliveryStatus: nextDeliveryStatus("dispatch"), courierName: b.courierName, dispatchedAt: new Date(), failureReason: null };
+      let courierName = b.courierName?.trim() ?? "";
+      let trackingUrl: string | null = null;
+      if (b.courierId) {
+        const courier = await prisma.courier.findFirst({ where: { id: b.courierId, tenantId, active: true } });
+        if (!courier) return sendProblem(reply, problems.unprocessable("Courier not found or switched off.", "unknown_courier"));
+        courierName = courier.name;
+        trackingUrl = trackingUrlFor(courier.trackingUrlTemplate, b.trackingRef);
+      }
+      if (courierName.length < 2) return sendProblem(reply, problems.unprocessable("Choose a courier or enter the rider's name.", "courier_required"));
+      data = { deliveryStatus: nextDeliveryStatus("dispatch"), courierName, courierId: b.courierId ?? null, trackingRef: b.trackingRef ?? null, trackingUrl, dispatchedAt: new Date(), failureReason: null };
     } else if (b.action === "deliver") {
       const pp = proofProblem(order.proofCode, b.proofCode, b.recipientName, b.note);
       if (pp) return sendProblem(reply, problems.unprocessable(pp, "proof_required"));
@@ -335,6 +399,8 @@ const pharmacyOrderRoutes: FastifyPluginAsync = async (app) => {
     const changed = await prisma.pharmacyOrder.updateMany({ where: { id, tenantId, deliveryStatus: order.deliveryStatus }, data });
     if (changed.count === 0) return sendProblem(reply, problems.conflict("The delivery changed. Reload and try again.", "delivery_changed"));
     const row = await prisma.pharmacyOrder.findUnique({ where: { id }, include: { lines: true } });
+    if (row && b.action === "dispatch") void sendOrderNotice(row, "DISPATCHED", request.log);
+    if (row && b.action === "deliver") void sendOrderNotice(row, "DELIVERED", request.log);
     return reply.code(200).send(serializeOrder(row as OrderRow));
   });
 };
