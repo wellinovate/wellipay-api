@@ -16,6 +16,10 @@ const notConfigured = (reply: Parameters<typeof sendProblem>[0]) =>
   sendProblem(reply, { status: 503, title: "Service Unavailable", detail: "Provider sign-up is not available right now.", code: "paystack_not_configured" });
 
 const onboardingRoutes: FastifyPluginAsync = async (app) => {
+  // What a provider agrees to before applying. Read from the same setting the
+  // approval script uses, so the page cannot disagree with the subaccount.
+  app.get("/onboarding/terms", async (_request, reply) => reply.code(200).send({ platformFeePercent: env.PLATFORM_FEE_PERCENT }));
+
   app.get("/onboarding/banks", async (request, reply) => {
     if (!env.PAYSTACK_SECRET_KEY) return notConfigured(reply);
     if (!bankCache || Date.now() - bankCache.at > BANK_CACHE_MS) {

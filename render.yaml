@@ -33,6 +33,6 @@ services:
         sync: false
       # Share of each provider payment the platform keeps, in percent.
       - key: PLATFORM_FEE_PERCENT
-        value: "0"
+        value: "1"
       - key: WEBHOOK_MAX_ATTEMPTS
         value: "8"
