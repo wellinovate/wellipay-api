@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { createFamilyFundingRequestSchema } from "../schemas/familyFunding.js";
+import { createFamilyFundingRequestSchema, listFamilyFundingQuerySchema } from "../schemas/familyFunding.js";
 import { prisma } from "../lib/prisma.js";
 import { checkIdempotency, storeIdempotentResponse } from "../lib/idempotency.js";
 import { queueEvent } from "../lib/webhooks.js";
@@ -88,6 +88,52 @@ const familyFundingRoutes: FastifyPluginAsync = async (app) => {
       };
       await storeIdempotentResponse(prisma, idem, 201, responseBody);
       return reply.code(201).send(responseBody);
+    }
+  );
+
+  // Funding requests with their pledges, newest first. Filter by invoiceId.
+  app.get(
+    "/provider/family-funding-requests",
+    { preHandler: app.requireScope("mobile.integration.read") },
+    async (request, reply) => {
+      const parsed = listFamilyFundingQuerySchema.safeParse(request.query);
+      if (!parsed.success) {
+        return sendProblem(reply, problems.badRequest(parsed.error.issues.map((i) => i.message).join("; "), "invalid_query"));
+      }
+      const { invoiceId, limit, offset } = parsed.data;
+      const where = { tenantId: request.auth!.tenantId, ...(invoiceId ? { invoiceId } : {}) };
+      const [rows, total] = await Promise.all([
+        prisma.familyFundingRequest.findMany({
+          where,
+          include: { contributions: { orderBy: { createdAt: "asc" } } },
+          orderBy: { createdAt: "desc" },
+          take: limit,
+          skip: offset,
+        }),
+        prisma.familyFundingRequest.count({ where }),
+      ]);
+      return reply.code(200).send({
+        items: rows.map((r) => ({
+          requestId: r.id,
+          providerRequestRef: r.providerRequestRef,
+          invoiceId: r.invoiceId,
+          patientRef: r.patientRef,
+          facilityRef: r.facilityRef,
+          status: r.status,
+          fundedAmountMinor: toMinorNumber(r.fundedAmountMinor),
+          createdAt: r.createdAt.toISOString(),
+          contributions: r.contributions.map((c) => ({
+            contributionId: c.id,
+            sponsorRef: c.sponsorRef,
+            amountMinor: toMinorNumber(c.amountMinor),
+            status: c.status,
+            paidAt: c.paidAt ? c.paidAt.toISOString() : undefined,
+          })),
+        })),
+        total,
+        limit,
+        offset,
+      });
     }
   );
 };
