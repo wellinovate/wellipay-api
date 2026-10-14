@@ -254,3 +254,23 @@ Alerts. `GET /provider/pharmacy/inventory/alerts` lists low and empty stock agai
 Suppliers. `GET`, `POST` and `PATCH /provider/pharmacy/suppliers`.
 
 Dispensing, prescriptions and delivery are a separate release. Payment does not dispense stock.
+
+## Pharmacy prescriptions, dispensing and delivery
+
+A payment record is not proof of dispensing. An order records what left the shelf, from which batch, and who released it.
+
+Prescriptions
+- `GET/POST /provider/prescriptions`: list and enter a prescription for a patient.
+- `PATCH /provider/prescriptions/:id/verify`: a registered pharmacist verifies or rejects. Verifying matches each item to a product and sets validity (1 to 180 days) and refills (0 to 5). A controlled medicine is valid for 30 days at most and has no refills.
+- `PATCH /provider/staff/:id/pharmacist`: an admin sets or clears a staff member's pharmacist licence number. A token with no signed-in staff member never counts as a pharmacist.
+- `GET/POST /patient/prescriptions`, `POST /patient/prescriptions/:id/refill`, `POST /patient/prescriptions/:id/cancel`: patient submission, refill requests and cancellation. A refill needs the last supply complete, none waiting, refills left and the original still valid. A pharmacist verifies every refill.
+
+Orders
+- `POST /provider/pharmacy/orders` creates an order from an invoice. Prescription-only and controlled lines need a prescription. A delivery needs an address and phone, and gets a six-digit proof code. The delivery fee comes from invoice lines in the "Delivery" category.
+- `POST /provider/pharmacy/orders/:id/dispense` checks, in one transaction: payment (Billing level or above can release unpaid goods with a reason on record), pharmacist and prescription coverage for restricted lines, and a collector's name for pickups. Stock comes from the earliest-expiring usable batches. Each batch used is written to a dispense record and a stock movement.
+- `GET /provider/pharmacy/orders/:id` shows the batch behind every unit, for recalls.
+- `POST .../:id/cancel` cancels an order that has not been dispensed.
+- `PATCH .../:id/delivery` records dispatch (courier name), delivery (proof code, or a note saying how the recipient was confirmed) and failure (reason).
+- `GET /patient/pharmacy-orders` shows status and delivery progress. The proof code shows only while a delivery is on its way.
+
+Not built: prescription photo upload, SMS when an order is ready or dispatched, courier integration, a controlled-drug register.
