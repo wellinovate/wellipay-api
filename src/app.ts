@@ -11,6 +11,7 @@ import paymentRoutes from "./routes/payments.js";
 import patientRoutes from "./routes/patients.js";
 import patientRecordRoutes from "./routes/patientRecords.js";
 import serviceItemRoutes from "./routes/serviceItems.js";
+import catalogueRoutes from "./routes/catalogue.js";
 import bookingRoutes from "./routes/bookings.js";
 import corporateAccountRoutes from "./routes/corporateAccounts.js";
 import claimRoutes from "./routes/claims.js";
@@ -96,6 +97,7 @@ export function buildApp() {
   app.register(patientRoutes);
   app.register(patientRecordRoutes);
   app.register(serviceItemRoutes);
+  app.register(catalogueRoutes);
   app.register(bookingRoutes);
   app.register(corporateAccountRoutes);
   app.register(claimRoutes);

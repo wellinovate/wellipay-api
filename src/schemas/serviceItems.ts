@@ -7,11 +7,22 @@ const price = z.number().int().min(1).max(10_000_000_000);
 // Ids of the single items inside a package. Leave out, or send [], for a single item.
 const componentIds = z.array(z.string().min(1)).max(40);
 
+const serviceCode = z.string().trim().min(1).max(40);
+const sampleType = z.string().trim().min(1).max(60);
+const turnaround = z.string().trim().min(1).max(60);
+const preparation = z.string().trim().min(1).max(500);
+
 export const createServiceItemSchema = z.object({
   name,
   category: category.optional(),
   unitPriceMinor: price,
   componentIds: componentIds.optional(),
+  serviceCode: serviceCode.optional(),
+  sampleType: sampleType.optional(),
+  turnaround: turnaround.optional(),
+  preparation: preparation.optional(),
+  homeCollection: z.boolean().optional(),
+  digitalResults: z.boolean().optional(),
 });
 
 export const updateServiceItemSchema = z
@@ -21,6 +32,12 @@ export const updateServiceItemSchema = z
     unitPriceMinor: price.optional(),
     active: z.boolean().optional(),
     componentIds: componentIds.optional(),
+    serviceCode: serviceCode.nullable().optional(),
+    sampleType: sampleType.nullable().optional(),
+    turnaround: turnaround.nullable().optional(),
+    preparation: preparation.nullable().optional(),
+    homeCollection: z.boolean().optional(),
+    digitalResults: z.boolean().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, "Send at least one field to change.");
 

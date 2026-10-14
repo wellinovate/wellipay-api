@@ -67,6 +67,7 @@ model Tenant {
   patientAccounts  PatientAccount[]
   patientRecords   PatientRecord[]
   serviceItems     ServiceItem[]
+  checkupPackages  CheckupPackage[]
   bookings         Booking[]
   corporateAccounts CorporateAccount[]
   hmoPolicies      HmoPolicy[]
@@ -929,6 +930,15 @@ model ServiceItem {
   active         Boolean  @default(true)
   // Set for a package or panel: the ids of the items it contains. Empty for a single item.
   componentIds   String[] @default([])
+  // Service record fields. `masterCode` links the item to the master diagnostic
+  // catalogue (for example LAB-HAEM-001). `serviceCode` is the provider's own code.
+  serviceCode    String?
+  masterCode     String?
+  sampleType     String?
+  turnaround     String?
+  preparation    String?
+  homeCollection Boolean  @default(false)
+  digitalResults Boolean  @default(false)
   createdBy      String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -936,8 +946,45 @@ model ServiceItem {
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, name])
+  @@unique([tenantId, masterCode])
   @@index([tenantId, active])
   @@map("service_items")
+}
+
+enum CheckupTier {
+  CLASSIC
+  EXECUTIVE
+  DIAMOND
+  PLATINUM
+}
+
+enum CheckupAudience {
+  ALL
+  MALE
+  FEMALE
+}
+
+// An optional check-up package. It lists price-list items and does not
+// replace them. The master test catalogue stays separate.
+model CheckupPackage {
+  id          String          @id @default(cuid())
+  tenantId    String
+  name        String
+  tier        CheckupTier
+  audience    CheckupAudience @default(ALL)
+  priceMinor  Int
+  includedIds String[]        @default([])
+  exclusions  String?
+  available   Boolean         @default(true)
+  createdBy   String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, name])
+  @@index([tenantId, available])
+  @@map("checkup_packages")
 }
 
 enum BookingType {

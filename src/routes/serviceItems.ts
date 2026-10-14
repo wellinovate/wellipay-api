@@ -5,7 +5,25 @@ import { sendProblem, problems } from "../lib/problem.js";
 import { resolveActor } from "../lib/actor.js";
 import { packageProblem } from "../lib/packages.js";
 
-function serialize(row: { id: string; name: string; category: string | null; unitPriceMinor: number; active: boolean; componentIds: string[]; createdAt: Date; updatedAt: Date }) {
+export interface ServiceItemRow {
+  id: string;
+  name: string;
+  category: string | null;
+  unitPriceMinor: number;
+  active: boolean;
+  componentIds: string[];
+  serviceCode: string | null;
+  masterCode: string | null;
+  sampleType: string | null;
+  turnaround: string | null;
+  preparation: string | null;
+  homeCollection: boolean;
+  digitalResults: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export function serialize(row: ServiceItemRow) {
   return {
     serviceItemId: row.id,
     name: row.name,
@@ -14,6 +32,13 @@ function serialize(row: { id: string; name: string; category: string | null; uni
     active: row.active,
     isPackage: row.componentIds.length > 0,
     componentIds: row.componentIds,
+    serviceCode: row.serviceCode ?? undefined,
+    masterCode: row.masterCode ?? undefined,
+    sampleType: row.sampleType ?? undefined,
+    turnaround: row.turnaround ?? undefined,
+    preparation: row.preparation ?? undefined,
+    homeCollection: row.homeCollection,
+    digitalResults: row.digitalResults,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -60,6 +85,12 @@ const serviceItemRoutes: FastifyPluginAsync = async (app) => {
         name: body.name,
         category: body.category ?? null,
         unitPriceMinor: body.unitPriceMinor,
+        ...(body.serviceCode !== undefined ? { serviceCode: body.serviceCode } : {}),
+        ...(body.sampleType !== undefined ? { sampleType: body.sampleType } : {}),
+        ...(body.turnaround !== undefined ? { turnaround: body.turnaround } : {}),
+        ...(body.preparation !== undefined ? { preparation: body.preparation } : {}),
+        ...(body.homeCollection !== undefined ? { homeCollection: body.homeCollection } : {}),
+        ...(body.digitalResults !== undefined ? { digitalResults: body.digitalResults } : {}),
         createdBy: resolveActor(request.auth, undefined) ?? null,
       },
     });
@@ -95,6 +126,12 @@ const serviceItemRoutes: FastifyPluginAsync = async (app) => {
         ...(body.category !== undefined ? { category: body.category } : {}),
         ...(body.unitPriceMinor !== undefined ? { unitPriceMinor: body.unitPriceMinor } : {}),
         ...(body.active !== undefined ? { active: body.active } : {}),
+        ...(body.serviceCode !== undefined ? { serviceCode: body.serviceCode } : {}),
+        ...(body.sampleType !== undefined ? { sampleType: body.sampleType } : {}),
+        ...(body.turnaround !== undefined ? { turnaround: body.turnaround } : {}),
+        ...(body.preparation !== undefined ? { preparation: body.preparation } : {}),
+        ...(body.homeCollection !== undefined ? { homeCollection: body.homeCollection } : {}),
+        ...(body.digitalResults !== undefined ? { digitalResults: body.digitalResults } : {}),
       },
     });
     return reply.code(200).send(serialize(updated));

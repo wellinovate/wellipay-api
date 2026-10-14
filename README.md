@@ -161,3 +161,23 @@ For diagnostic centres and other providers that bill in bundles or on account.
 - Corporate accounts. `POST /provider/corporate-accounts` adds a company. `GET /provider/corporate-accounts` lists them with billed, paid and outstanding totals. `GET /provider/corporate-accounts/:id/statement` lists the account's invoices. To bill a company, send `corporateAccountId` on `POST /provider/invoices`.
 
 Reads are open to every staff level. Bookings are written by front desk levels and above. Packages and accounts are written by Billing, Finance and Admin.
+
+## Diagnostic test catalogue and check-up packages
+
+The master catalogue lives in `src/data/diagnosticCatalogue.ts`. It has 48 tests in 11 categories. Each test has a code such as `LAB-HAEM-001`, a category, a sample type and the check-up lists it belongs to (`MALE`, `FEMALE`). It carries no prices.
+
+A provider offers a master test by adding it to its price list. That creates a price list item with the test's `masterCode`, and the provider sets the price, turnaround time, preparation, home collection and digital results. One offer per test per provider.
+
+- `GET /provider/catalogue/diagnostic-tests` lists the master tests with the provider's offer joined to each. Filters: `q`, `category` (a category code such as `HAEM`).
+- `POST /provider/catalogue/diagnostic-tests/offers` offers up to 60 tests at once. Each needs `code` and `unitPriceMinor`. Tests already offered, or whose name another item uses, come back under `skipped`.
+- `/provider/service-items` accepts and returns `serviceCode`, `sampleType`, `turnaround`, `preparation`, `homeCollection` and `digitalResults`.
+
+Check-up packages are optional and stay separate from the test catalogue. A package has a tier (`CLASSIC`, `EXECUTIVE`, `DIAMOND`, `PLATINUM`), an audience (`ALL`, `MALE`, `FEMALE`), a price, the included price list items (at least two, single and active), exclusions and an availability flag.
+
+- `GET /provider/checkup-packages`
+- `POST /provider/checkup-packages`
+- `PATCH /provider/checkup-packages/:id`
+
+Tier contents and prices are not fixed by the platform. Each provider sets its own.
+
+Migration `20261014070000_diagnostic_catalogue` is hand-written SQL.
