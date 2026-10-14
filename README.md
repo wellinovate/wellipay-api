@@ -181,3 +181,20 @@ Check-up packages are optional and stay separate from the test catalogue. A pack
 Tier contents and prices are not fixed by the platform. Each provider sets its own.
 
 Migration `20261014070000_diagnostic_catalogue` is hand-written SQL.
+
+## Invoice lines, payment limit and test results
+
+**Invoice lines.** `POST /provider/invoices` accepts an optional `lines` array (1 to 60). Each line has `description`, `quantity` (default 1), `unitPriceMinor` and an optional `serviceItemId`. The lines must add up to `amountMinor`, or the API returns 422 `lines_total_mismatch`. Invoices read back with `lines` and a `lineTotalMinor` on each. Invoices made without lines are unchanged.
+
+**Payment limit.** `POST /provider/payments` returns 422 `payment_exceeds_balance` when the amount is more than what is still owed, or when the invoice is already paid or cancelled. Paystack webhook payments are not blocked, because the money has already been taken.
+
+**Test results.** Each booking can carry one result per test.
+
+- `GET /provider/bookings/:id/results`
+- `POST /provider/bookings/:id/results` lists the tests on the booking (`tests`: `testName`, optional `serviceItemId`). Tests already listed are skipped.
+- `PATCH /provider/booking-results/:resultId` sets `resultText`, `abnormal` and `status` (`PENDING` or `READY`). A result cannot be marked ready without text. Results can be entered once the sample is collected.
+- A booking cannot move to `READY` while a result on it is still pending (409 `results_incomplete`).
+
+Patients do not see results through the patient API yet.
+
+Migration `20261014080000_invoice_lines_results` is hand-written SQL.

@@ -6,6 +6,7 @@ import { queueEvent } from "../lib/webhooks.js";
 import { sendProblem, problems } from "../lib/problem.js";
 import { toMinorBigInt, toMinorNumber } from "../lib/money.js";
 import { fundingTotals } from "../lib/funding.js";
+import { paymentProblem } from "../lib/paymentLimit.js";
 import type { Prisma } from "@prisma/client";
 
 const ROUTE = "POST /provider/payments";
@@ -51,6 +52,9 @@ const paymentRoutes: FastifyPluginAsync = async (app) => {
       if (!invoice) {
         return sendProblem(reply, problems.unprocessable(`invoiceId "${body.invoiceId}" does not exist for this tenant.`, "unknown_invoice"));
       }
+
+      const limitProblem = paymentProblem(toMinorBigInt(body.amountMinor), invoice.amountMinor, invoice.paidAmountMinor, invoice.status);
+      if (limitProblem) return sendProblem(reply, problems.unprocessable(limitProblem, "payment_exceeds_balance"));
 
       let contribution: { id: string; requestId: string; amountMinor: bigint; status: string } | null = null;
       if (body.fundingContributionId) {

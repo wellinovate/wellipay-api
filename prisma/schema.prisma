@@ -68,6 +68,8 @@ model Tenant {
   patientRecords   PatientRecord[]
   serviceItems     ServiceItem[]
   checkupPackages  CheckupPackage[]
+  invoiceLines     InvoiceLine[]
+  bookingResults   BookingResult[]
   bookings         Booking[]
   corporateAccounts CorporateAccount[]
   hmoPolicies      HmoPolicy[]
@@ -137,6 +139,7 @@ model Invoice {
   paymentPlans     PaymentPlan[]
   financingRecords FinancingRecord[]
   corporateAccount CorporateAccount? @relation(fields: [corporateAccountId], references: [id])
+  lines            InvoiceLine[]
 
   // Idempotent publish: same tenant + same provider-issued invoice ref must
   // resolve to one row, independent of the Idempotency-Key mechanism (which
@@ -1007,6 +1010,54 @@ enum BookingStatus {
 }
 
 // A sample collection or visit booked for a patient.
+// One line on an invoice: a test or service with its own quantity and price.
+// An invoice may have none (older invoices); then the description and total stand alone.
+model InvoiceLine {
+  id             String   @id @default(cuid())
+  tenantId       String
+  invoiceId      String
+  position       Int
+  description    String
+  quantity       Int      @default(1)
+  unitPriceMinor Int
+  serviceItemId  String?
+  createdAt      DateTime @default(now())
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId, position])
+  @@map("invoice_lines")
+}
+
+enum ResultStatus {
+  PENDING
+  READY
+}
+
+// The result of one test (or the report of one scan) on a booking.
+model BookingResult {
+  id            String       @id @default(cuid())
+  tenantId      String
+  bookingId     String
+  testName      String
+  serviceItemId String?
+  status        ResultStatus @default(PENDING)
+  resultText    String?
+  abnormal      Boolean      @default(false)
+  enteredBy     String?
+  enteredAt     DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingId, testName])
+  @@index([tenantId, bookingId])
+  @@map("booking_results")
+}
+
 model Booking {
   id          String        @id @default(cuid())
   tenantId    String
@@ -1022,7 +1073,8 @@ model Booking {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tenant  Tenant          @relation(fields: [tenantId], references: [id])
+  results BookingResult[]
 
   @@index([tenantId, status, scheduledAt])
   @@map("bookings")

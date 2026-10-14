@@ -71,6 +71,9 @@ export const ROUTE_RULES: ReadonlyArray<readonly [string, string, Levels]> = [
   ["GET", "/provider/bookings", EVERYONE],
   ["POST", "/provider/bookings", FRONT_DESK],
   ["PATCH", "/provider/bookings/:id", FRONT_DESK],
+  ["GET", "/provider/bookings/:id/results", EVERYONE],
+  ["POST", "/provider/bookings/:id/results", FRONT_DESK],
+  ["PATCH", "/provider/booking-results/:resultId", FRONT_DESK],
 
   ["GET", "/provider/corporate-accounts", EVERYONE],
   ["POST", "/provider/corporate-accounts", BILLING_WORK],

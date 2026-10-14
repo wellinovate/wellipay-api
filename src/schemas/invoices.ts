@@ -13,6 +13,19 @@ export const createInvoiceSchema = z.object({
   dueAt: z.string().datetime().optional(),
   // Bill a company on account. The account must be one of this provider's.
   corporateAccountId: z.string().min(1).optional(),
+  // Optional itemised lines. When sent, they must add up to amountMinor.
+  lines: z
+    .array(
+      z.object({
+        description: z.string().trim().min(1).max(200),
+        quantity: z.number().int().min(1).max(1000).default(1),
+        unitPriceMinor: z.number().int().min(1),
+        serviceItemId: z.string().min(1).optional(),
+      }),
+    )
+    .min(1)
+    .max(60)
+    .optional(),
   metadata: z.record(z.string().max(120)).refine((m) => Object.keys(m).length <= 20, "metadata may have at most 20 properties").optional(),
 });
 
