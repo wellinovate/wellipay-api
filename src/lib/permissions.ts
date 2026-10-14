@@ -118,6 +118,10 @@ export const ROUTE_RULES: ReadonlyArray<readonly [string, string, Levels]> = [
   ["PATCH", "/provider/refunds/:refundId/decision", FINANCE_ONLY],
   ["POST", "/provider/refunds/:refundId/gateway-status", FRONT_DESK],
 
+  ["GET", "/provider/payments/settlement", FINANCE_VIEW],
+  ["POST", "/provider/payments/settlement/sync", FINANCE_ONLY],
+  ["GET", "/provider/wallet-summary", FINANCE_VIEW],
+
   ["GET", "/provider/settlements", FINANCE_VIEW],
   ["POST", "/provider/settlements", FINANCE_ONLY],
   ["PATCH", "/provider/settlements/:id/confirm", FINANCE_ONLY],

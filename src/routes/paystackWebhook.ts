@@ -5,11 +5,13 @@ import { queueEvent } from "../lib/webhooks.js";
 import { toMinorNumber } from "../lib/money.js";
 import { fundingTotals } from "../lib/funding.js";
 import { mapPaystackChannel, verifyPaystackSignature } from "../lib/paystack.js";
+import { parseAuthorization } from "../lib/cards.js";
+import { creditTopUp } from "../lib/walletTopUp.js";
 import type { Prisma } from "@prisma/client";
 
 interface PaystackEvent {
   event?: string;
-  data?: { reference?: string; amount?: number; currency?: string; channel?: string; id?: number | string; gateway_response?: string };
+  data?: { reference?: string; amount?: number; currency?: string; channel?: string; id?: number | string; gateway_response?: string; fees?: number; authorization?: unknown };
 }
 
 // Paystack calls this when a charge succeeds or fails. It is public, so the
@@ -44,7 +46,9 @@ const paystackWebhookRoutes: FastifyPluginAsync = async (app) => {
 
     const charge = await prisma.paystackCharge.findUnique({ where: { reference } });
     if (!charge) {
-      request.log.warn({ reference }, "Paystack webhook for unknown reference");
+      // Not an invoice charge. It may be a wallet top-up.
+      const handled = await creditTopUp(event.event, reference, event.data ?? {}, request.log);
+      if (!handled) request.log.warn({ reference }, "Paystack webhook for unknown reference");
       return reply.code(200).send();
     }
     if (charge.status !== "PENDING") return reply.code(200).send(); // already handled
@@ -70,7 +74,11 @@ const paystackWebhookRoutes: FastifyPluginAsync = async (app) => {
 
     await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       // Claim the charge. Of two concurrent deliveries only one gets count 1.
-      const claimed = await tx.paystackCharge.updateMany({ where: { id: charge.id, status: "PENDING" }, data: { status: "SUCCESS" } });
+      const fees = Number.isInteger(event.data?.fees) && (event.data?.fees as number) >= 0 ? BigInt(event.data?.fees as number) : null;
+      const claimed = await tx.paystackCharge.updateMany({
+        where: { id: charge.id, status: "PENDING" },
+        data: { status: "SUCCESS", ...(fees !== null ? { feesMinor: fees } : {}) },
+      });
       if (claimed.count === 0) return;
 
       const invoice = await tx.invoice.findFirst({ where: { id: charge.invoiceId, tenantId: charge.tenantId } });
@@ -131,6 +139,22 @@ const paystackWebhookRoutes: FastifyPluginAsync = async (app) => {
         }
       }
     });
+
+    // The patient asked to keep the card. Failing to save it never undoes the payment.
+    if (charge.saveCard && charge.payerPatientRef) {
+      const card = parseAuthorization(event.data?.authorization);
+      if (card) {
+        try {
+          await prisma.savedPaymentMethod.upsert({
+            where: { tenantId_patientRef_signature: { tenantId: charge.tenantId, patientRef: charge.payerPatientRef, signature: card.signature } },
+            create: { tenantId: charge.tenantId, patientRef: charge.payerPatientRef, authorizationCode: card.authorizationCode, signature: card.signature, email: charge.email, brand: card.brand, last4: card.last4, expMonth: card.expMonth, expYear: card.expYear, bank: card.bank },
+            update: { authorizationCode: card.authorizationCode, email: charge.email, brand: card.brand, expMonth: card.expMonth, expYear: card.expYear, bank: card.bank },
+          });
+        } catch (err) {
+          request.log.error({ err, reference }, "Could not save the card");
+        }
+      }
+    }
 
     return reply.code(200).send();
   });

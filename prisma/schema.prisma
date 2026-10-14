@@ -333,11 +333,22 @@ model PaystackCharge {
   payerPhone       String?
   // Shown once on a guest receipt. A patient enters it to add the payment to their profile.
   claimCode        String?              @unique
+  // Paystack's fee for this charge, taken from the webhook.
+  feesMinor        BigInt?
+  // Where the money is on its way to the provider's bank: AWAITING, PROCESSING, SETTLED or FAILED.
+  settlementStatus String               @default("AWAITING")
+  gatewaySettlementId String?
+  settledAt        DateTime?
+  // A signed-in patient asked to keep the card for next time.
+  saveCard         Boolean              @default(false)
+  // Set when the charge used a saved card.
+  savedMethodId    String?
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
 
   @@index([tenantId, invoiceId])
   @@index([tenantId, payerPatientRef])
+  @@index([tenantId, status, settlementStatus])
   @@map("paystack_charges")
 }
 
@@ -1109,4 +1120,102 @@ model CorporateAccount {
 
   @@unique([tenantId, name])
   @@map("corporate_accounts")
+}
+
+// A reminder a patient set on one of their own bills. A worker sends an SMS
+// when remindAt passes. One per bill; setting it again replaces it.
+model PatientReminder {
+  id         String    @id @default(cuid())
+  tenantId   String
+  patientRef String
+  invoiceId  String
+  remindAt   DateTime
+  note       String?
+  sentAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@unique([tenantId, patientRef, invoiceId])
+  @@index([remindAt, sentAt])
+  @@map("patient_reminders")
+}
+
+// A card a patient chose to keep. Only Paystack's reusable token and the
+// display details are stored. The card number never reaches this service.
+model SavedPaymentMethod {
+  id                String   @id @default(cuid())
+  tenantId          String
+  patientRef        String
+  authorizationCode String
+  // Paystack's fingerprint of the card. Saving the same card twice keeps one row.
+  signature         String
+  email             String
+  brand             String?
+  last4             String
+  expMonth          String?
+  expYear           String?
+  bank              String?
+  createdAt         DateTime @default(now())
+
+  @@unique([tenantId, patientRef, signature])
+  @@index([tenantId, patientRef])
+  @@map("saved_payment_methods")
+}
+
+// Prepaid credit a patient holds with one provider. A top-up is paid to the
+// provider like any other payment. The balance is the provider's liability to
+// the patient. The platform does not hold the money.
+model WalletAccount {
+  id           String   @id @default(cuid())
+  tenantId     String
+  patientRef   String
+  balanceMinor BigInt   @default(0)
+  updatedAt    DateTime @updatedAt
+
+  @@unique([tenantId, patientRef])
+  @@map("wallet_accounts")
+}
+
+enum WalletEntryKind {
+  TOPUP
+  INVOICE_PAYMENT
+}
+
+// Every change to a wallet balance. `reference` is unique per kind, so a
+// repeated webhook cannot credit a top-up twice.
+model WalletEntry {
+  id          String          @id @default(cuid())
+  tenantId    String
+  patientRef  String
+  kind        WalletEntryKind
+  // Positive for money in, negative for money out.
+  amountMinor BigInt
+  reference   String
+  invoiceId   String?
+  paymentId   String?
+  createdAt   DateTime        @default(now())
+
+  @@unique([kind, reference])
+  @@index([tenantId, patientRef, createdAt])
+  @@map("wallet_entries")
+}
+
+// One Paystack checkout to add credit. The webhook credits the wallet.
+model WalletTopUp {
+  id               String               @id @default(cuid())
+  tenantId         String
+  patientRef       String
+  reference        String               @unique
+  amountMinor      BigInt
+  email            String
+  status           PaystackChargeStatus @default(PENDING)
+  authorizationUrl String?
+  failureReason    String?
+  feesMinor        BigInt?
+  settlementStatus String               @default("AWAITING")
+  gatewaySettlementId String?
+  settledAt        DateTime?
+  createdAt        DateTime             @default(now())
+
+  @@index([tenantId, patientRef, createdAt])
+  @@map("wallet_top_ups")
 }
