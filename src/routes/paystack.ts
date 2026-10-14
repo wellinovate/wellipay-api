@@ -13,6 +13,11 @@ const createChargeSchema = z.object({
   email: z.string().email().max(160),
   // Defaults to the invoice's outstanding balance.
   amountMinor: z.number().int().min(100).optional(),
+  // Pay one sponsor's pledge on a family funding request. The amount is the
+  // pledged amount; do not send amountMinor with it.
+  fundingContributionId: z.string().min(1).optional(),
+}).refine((v) => !(v.fundingContributionId && v.amountMinor !== undefined), {
+  message: "Do not send amountMinor with fundingContributionId. The pledged amount is used.",
 });
 
 const settlementsQuerySchema = z.object({
@@ -22,7 +27,7 @@ const settlementsQuerySchema = z.object({
 
 function serializeCharge(c: {
   id: string; invoiceId: string; reference: string; amountMinor: bigint; status: string;
-  authorizationUrl: string | null; paymentId: string | null; failureReason: string | null; createdAt: Date;
+  authorizationUrl: string | null; paymentId: string | null; failureReason: string | null; fundingContributionId: string | null; createdAt: Date;
 }) {
   return {
     chargeId: c.id,
@@ -34,6 +39,7 @@ function serializeCharge(c: {
     authorizationUrl: c.authorizationUrl ?? undefined,
     paymentId: c.paymentId ?? undefined,
     failureReason: c.failureReason ?? undefined,
+    fundingContributionId: c.fundingContributionId ?? undefined,
     createdAt: c.createdAt.toISOString(),
   };
 }
@@ -64,7 +70,20 @@ const paystackRoutes: FastifyPluginAsync = async (app) => {
         return sendProblem(reply, problems.conflict(`Invoice is ${invoice.status.toLowerCase()}.`, "invoice_not_payable"));
       }
       const outstanding = BigInt(invoice.amountMinor) - BigInt(invoice.paidAmountMinor);
-      const amount = body.amountMinor !== undefined ? toMinorBigInt(body.amountMinor) : outstanding;
+      let pledgeAmount: bigint | null = null;
+      if (body.fundingContributionId) {
+        const contribution = await prisma.fundingContribution.findFirst({
+          where: { id: body.fundingContributionId, request: { tenantId, invoiceId: invoice.id } },
+        });
+        if (!contribution) {
+          return sendProblem(reply, problems.unprocessable(`fundingContributionId "${body.fundingContributionId}" does not exist for this tenant/invoice.`, "unknown_funding_contribution"));
+        }
+        if (contribution.status !== "PENDING") {
+          return sendProblem(reply, problems.conflict(`Funding contribution is already ${contribution.status.toLowerCase()}.`, "contribution_already_settled"));
+        }
+        pledgeAmount = BigInt(contribution.amountMinor);
+      }
+      const amount = pledgeAmount ?? (body.amountMinor !== undefined ? toMinorBigInt(body.amountMinor) : outstanding);
       if (amount <= 0n || amount > outstanding) {
         return sendProblem(
           reply,
@@ -80,7 +99,7 @@ const paystackRoutes: FastifyPluginAsync = async (app) => {
           amountMinor: toMinorNumber(amount),
           reference,
           callbackUrl: env.PAYSTACK_CALLBACK_URL,
-          metadata: { invoiceId: invoice.id, tenantId },
+          metadata: { invoiceId: invoice.id, tenantId, ...(body.fundingContributionId ? { fundingContributionId: body.fundingContributionId } : {}) },
           subaccount: (await prisma.tenant.findUnique({ where: { id: tenantId }, select: { paystackSubaccountCode: true } }))?.paystackSubaccountCode ?? null,
         });
       } catch (err) {
@@ -97,6 +116,7 @@ const paystackRoutes: FastifyPluginAsync = async (app) => {
           amountMinor: amount,
           email: body.email,
           authorizationUrl: init.authorizationUrl,
+          fundingContributionId: body.fundingContributionId ?? null,
           createdBy: resolveActor(request.auth, null),
         },
       });

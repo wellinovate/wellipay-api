@@ -310,6 +310,8 @@ model PaystackCharge {
   authorizationUrl String?
   paymentId        String?
   failureReason    String?
+  // Set when a sponsor is paying a family funding pledge through this charge.
+  fundingContributionId String?
   createdBy        String? // staff actor, as resolved from the token
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt

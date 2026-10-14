@@ -130,3 +130,13 @@ The sign-in time travels inside every renewed token. Renewal stops `SESSION_MAX_
 A refund paid through Paystack stores Paystack's refund id and status when it is approved. Paystack moves it on afterwards (`pending`, `processing`, `processed`, `needs-attention`, `failed`). `POST /provider/refunds/:refundId/gateway-status` asks Paystack for the current status and saves it. The console calls it for refunds that have not reached `processed` or `failed`.
 
 If a refund ends as `failed` or `needs-attention`, the patient has not been paid. The console flags it. Contact Paystack support with the refund id.
+
+## Family funding through Paystack
+
+A sponsor can pay their pledge online instead of at the desk.
+
+1. Create the funding request as before (`POST /provider/family-funding-requests`). Each sponsor gets a contribution with an id.
+2. `POST /provider/paystack/charges` with `invoiceId`, the sponsor's `email` and `fundingContributionId`. The amount is the pledged amount, so do not send `amountMinor`. The reply has an `authorizationUrl` to send to the sponsor.
+3. When Paystack confirms the charge, the webhook records the payment, marks the contribution paid and updates the request. The request becomes `FUNDED` when every pledge is paid. A `family.contribution.updated` event is sent.
+
+A pledge that is already paid is refused with `contribution_already_settled`. If a pledge was settled another way while a link was open, the money is still recorded as a payment and the pledge is left as it was.
