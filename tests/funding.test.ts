@@ -24,3 +24,13 @@ describe("fundingTotals", () => {
     expect(r.status).toBe("OPEN");
   });
 });
+
+import { listFamilyFundingQuerySchema } from "../src/schemas/familyFunding.js";
+describe("listFamilyFundingQuerySchema", () => {
+  it("defaults the limit to 50", () => {
+    expect(listFamilyFundingQuerySchema.parse({}).limit).toBe(50);
+  });
+  it("accepts an invoice filter", () => {
+    expect(listFamilyFundingQuerySchema.parse({ invoiceId: "abc" }).invoiceId).toBe("abc");
+  });
+});

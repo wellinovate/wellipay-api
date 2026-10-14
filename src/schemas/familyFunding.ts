@@ -14,3 +14,9 @@ export const createFamilyFundingRequestSchema = z.object({
 });
 
 export type CreateFamilyFundingRequestInput = z.infer<typeof createFamilyFundingRequestSchema>;
+
+export const listFamilyFundingQuerySchema = z.object({
+  invoiceId: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});

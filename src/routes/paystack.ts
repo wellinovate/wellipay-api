@@ -82,6 +82,9 @@ const paystackRoutes: FastifyPluginAsync = async (app) => {
           return sendProblem(reply, problems.conflict(`Funding contribution is already ${contribution.status.toLowerCase()}.`, "contribution_already_settled"));
         }
         pledgeAmount = BigInt(contribution.amountMinor);
+        if (pledgeAmount < 100n) {
+          return sendProblem(reply, problems.unprocessable("Paystack needs at least 100 kobo. Settle this pledge at the desk instead.", "pledge_below_minimum"));
+        }
       }
       const amount = pledgeAmount ?? (body.amountMinor !== undefined ? toMinorBigInt(body.amountMinor) : outstanding);
       if (amount <= 0n || amount > outstanding) {

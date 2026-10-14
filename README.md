@@ -139,4 +139,6 @@ A sponsor can pay their pledge online instead of at the desk.
 2. `POST /provider/paystack/charges` with `invoiceId`, the sponsor's `email` and `fundingContributionId`. The amount is the pledged amount, so do not send `amountMinor`. The reply has an `authorizationUrl` to send to the sponsor.
 3. When Paystack confirms the charge, the webhook records the payment, marks the contribution paid and updates the request. The request becomes `FUNDED` when every pledge is paid. A `family.contribution.updated` event is sent.
 
+`GET /provider/family-funding-requests` lists requests with their pledges and statuses. Filter with `invoiceId`.
+
 A pledge that is already paid is refused with `contribution_already_settled`. If a pledge was settled another way while a link was open, the money is still recorded as a payment and the pledge is left as it was.
