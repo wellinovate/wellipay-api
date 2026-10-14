@@ -45,6 +45,8 @@ model Tenant {
   settlementBankCode      String?
   settlementAccountNumber String?
   settlementAccountName   String?
+  // Refunds above this amount need two different approvers. Null means one approver is enough.
+  refundApprovalLimitMinor BigInt?
 
   credentials      ApiCredential[]
   invoices         Invoice[]
@@ -413,6 +415,9 @@ model Refund {
   status            RefundStatus @default(PENDING)
   decidedBy         String?
   decidedAt         DateTime?
+  // First of two approvals on a refund above the tenant's limit. The refund stays PENDING until a second person approves.
+  firstApprovedBy   String?
+  firstApprovedAt   DateTime?
   // Set only when the money went back through Paystack.
   gatewayRefundRef  String?
   gatewayStatus     String?

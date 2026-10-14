@@ -9,6 +9,7 @@ import { resolveActor } from "../lib/actor.js";
 import { env } from "../env.js";
 import { createRefund, listRefundsForTransaction, findGatewayRefund, PaystackError } from "../lib/paystack.js";
 import { refundIsRecoverable } from "../lib/recovery.js";
+import { approvalStep } from "../lib/refundApproval.js";
 import type { Prisma } from "@prisma/client";
 
 const CREATE_ROUTE = "POST /provider/refunds";
@@ -17,7 +18,7 @@ function serializeRefund(refund: {
   id: string; providerRefundRef: string; paymentId: string; invoiceId: string; amountMinor: bigint;
   currency: string; reason: string; requestedBy: string; status: string; decidedBy: string | null;
   decidedAt: Date | null; createdAt: Date; gatewayRefundRef?: string | null; gatewayStatus?: string | null;
-  recoveryStatus?: string | null; recoveredAt?: Date | null;
+  recoveryStatus?: string | null; recoveredAt?: Date | null; firstApprovedBy?: string | null; firstApprovedAt?: Date | null;
 }) {
   return {
     refundId: refund.id,
@@ -36,6 +37,8 @@ function serializeRefund(refund: {
     gatewayStatus: refund.gatewayStatus ?? undefined,
     recoveryStatus: refund.recoveryStatus ?? undefined,
     recoveredAt: refund.recoveredAt?.toISOString(),
+    firstApprovedBy: refund.firstApprovedBy ?? undefined,
+    firstApprovedAt: refund.firstApprovedAt?.toISOString(),
   };
 }
 
@@ -210,6 +213,27 @@ const refundRoutes: FastifyPluginAsync = async (app) => {
       }
       if (refund.status !== "PENDING") {
         return sendProblem(reply, problems.conflict(`Refund is already ${refund.status.toLowerCase()}.`, "refund_already_decided"));
+      }
+
+      // A refund above the tenant's limit needs two different approvers. The
+      // first approval is recorded here and the refund stays PENDING.
+      const limit = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { refundApprovalLimitMinor: true } });
+      const step = approvalStep({
+        limitMinor: limit?.refundApprovalLimitMinor ?? null,
+        amountMinor: refund.amountMinor,
+        firstApprovedBy: refund.firstApprovedBy,
+        actor,
+        decision: body.decision,
+      });
+      if (step.kind === "BLOCKED") {
+        return sendProblem(reply, problems.conflict(step.message, step.code));
+      }
+      if (step.kind === "FIRST") {
+        const first = await prisma.refund.update({
+          where: { id: refund.id },
+          data: { firstApprovedBy: actor, firstApprovedAt: new Date() },
+        });
+        return reply.code(200).send({ ...serializeRefund(first), awaitingSecondApproval: true });
       }
 
       // A payment made through Paystack is refunded through Paystack. Call it
