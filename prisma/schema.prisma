@@ -67,6 +67,8 @@ model Tenant {
   patientAccounts  PatientAccount[]
   patientRecords   PatientRecord[]
   serviceItems     ServiceItem[]
+  bookings         Booking[]
+  corporateAccounts CorporateAccount[]
   hmoPolicies      HmoPolicy[]
   preAuthorizations PreAuthorization[]
 
@@ -120,6 +122,8 @@ model Invoice {
   mobileDeliveryStatus MobileDeliveryStatus @default(QUEUED)
   dueAt               DateTime?
   metadata            Json?
+  // Set when the invoice is billed to a company on account instead of the patient.
+  corporateAccountId  String?
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
 
@@ -131,12 +135,14 @@ model Invoice {
   refunds          Refund[]
   paymentPlans     PaymentPlan[]
   financingRecords FinancingRecord[]
+  corporateAccount CorporateAccount? @relation(fields: [corporateAccountId], references: [id])
 
   // Idempotent publish: same tenant + same provider-issued invoice ref must
   // resolve to one row, independent of the Idempotency-Key mechanism (which
   // guards the HTTP write itself). Belt and suspenders for a ledger.
   @@unique([tenantId, providerInvoiceRef])
   @@index([tenantId, facilityRef])
+  @@index([tenantId, corporateAccountId])
   @@map("invoices")
 }
 
@@ -921,6 +927,8 @@ model ServiceItem {
   category       String?
   unitPriceMinor Int
   active         Boolean  @default(true)
+  // Set for a package or panel: the ids of the items it contains. Empty for a single item.
+  componentIds   String[] @default([])
   createdBy      String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -930,4 +938,58 @@ model ServiceItem {
   @@unique([tenantId, name])
   @@index([tenantId, active])
   @@map("service_items")
+}
+
+enum BookingType {
+  CENTRE_VISIT
+  HOME_COLLECTION
+}
+
+enum BookingStatus {
+  BOOKED
+  SAMPLE_COLLECTED
+  PROCESSING
+  READY
+  CANCELLED
+}
+
+// A sample collection or visit booked for a patient.
+model Booking {
+  id          String        @id @default(cuid())
+  tenantId    String
+  patientRef  String
+  type        BookingType
+  scheduledAt DateTime
+  address     String?
+  notes       String?
+  status      BookingStatus @default(BOOKED)
+  invoiceId   String?
+  createdBy   String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, status, scheduledAt])
+  @@map("bookings")
+}
+
+// A company the provider bills on account.
+model CorporateAccount {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  contactName String?
+  email       String?
+  phone       String?
+  active      Boolean  @default(true)
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  invoices Invoice[]
+
+  @@unique([tenantId, name])
+  @@map("corporate_accounts")
 }

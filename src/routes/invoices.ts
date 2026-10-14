@@ -12,7 +12,7 @@ const ROUTE = "POST /provider/invoices";
 function serializeInvoice(invoice: {
   id: string; providerInvoiceRef: string; facilityRef: string; patientRef: string; description: string;
   amountMinor: bigint; currency: string; paidAmountMinor: bigint; status: string; mobileDeliveryStatus: string;
-  dueAt: Date | null; metadata: unknown; createdAt: Date; updatedAt: Date;
+  dueAt: Date | null; metadata: unknown; corporateAccountId?: string | null; createdAt: Date; updatedAt: Date;
 }) {
   return {
     invoiceId: invoice.id,
@@ -27,6 +27,7 @@ function serializeInvoice(invoice: {
     mobileDeliveryStatus: invoice.mobileDeliveryStatus,
     dueAt: invoice.dueAt?.toISOString(),
     metadata: invoice.metadata ?? undefined,
+    corporateAccountId: invoice.corporateAccountId ?? undefined,
     createdAt: invoice.createdAt.toISOString(),
     updatedAt: invoice.updatedAt.toISOString(),
   };
@@ -61,10 +62,21 @@ const invoiceRoutes: FastifyPluginAsync = async (app) => {
         ));
       }
 
+      if (body.corporateAccountId) {
+        const account = await prisma.corporateAccount.findFirst({ where: { id: body.corporateAccountId, tenantId } });
+        if (!account) {
+          return sendProblem(reply, problems.unprocessable(`corporateAccountId "${body.corporateAccountId}" does not exist for this tenant.`, "unknown_corporate_account"));
+        }
+        if (!account.active) {
+          return sendProblem(reply, problems.conflict(`"${account.name}" is switched off.`, "corporate_account_inactive"));
+        }
+      }
+
       const invoice = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const created = await tx.invoice.create({
           data: {
             tenantId,
+            corporateAccountId: body.corporateAccountId ?? null,
             providerInvoiceRef: body.providerInvoiceRef,
             facilityRef: body.facilityRef,
             patientRef: body.patientRef,

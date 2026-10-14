@@ -11,6 +11,8 @@ export const createInvoiceSchema = z.object({
   amountMinor: z.number().int().min(1),
   currency: z.literal("NGN"),
   dueAt: z.string().datetime().optional(),
+  // Bill a company on account. The account must be one of this provider's.
+  corporateAccountId: z.string().min(1).optional(),
   metadata: z.record(z.string().max(120)).refine((m) => Object.keys(m).length <= 20, "metadata may have at most 20 properties").optional(),
 });
 
