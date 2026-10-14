@@ -66,6 +66,7 @@ model Tenant {
   referrals        Referral[]
   patientAccounts  PatientAccount[]
   patientRecords   PatientRecord[]
+  serviceItems     ServiceItem[]
   hmoPolicies      HmoPolicy[]
   preAuthorizations PreAuthorization[]
 
@@ -907,4 +908,24 @@ model PatientRecord {
   @@unique([tenantId, patientRef])
   @@index([tenantId, createdAt])
   @@map("patient_records")
+}
+
+// A provider's saved price list. Invoices copy the name and price at the
+// time they are made, so editing an item never changes an old invoice.
+model ServiceItem {
+  id             String   @id @default(cuid())
+  tenantId       String
+  name           String
+  category       String?
+  unitPriceMinor Int
+  active         Boolean  @default(true)
+  createdBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, name])
+  @@index([tenantId, active])
+  @@map("service_items")
 }

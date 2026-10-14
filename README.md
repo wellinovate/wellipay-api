@@ -130,3 +130,13 @@ The sign-in time travels inside every renewed token. Renewal stops `SESSION_MAX_
 A refund paid through Paystack stores Paystack's refund id and status when it is approved. Paystack moves it on afterwards (`pending`, `processing`, `processed`, `needs-attention`, `failed`). `POST /provider/refunds/:refundId/gateway-status` asks Paystack for the current status and saves it. The console calls it for refunds that have not reached `processed` or `failed`.
 
 If a refund ends as `failed` or `needs-attention`, the patient has not been paid. The console flags it. Contact Paystack support with the refund id.
+
+## Price list
+
+Each provider keeps a saved price list. Prices are whole kobo.
+
+- `GET /provider/service-items` lists active items. Add `includeInactive=true` to include switched-off ones, and `q` to search by name.
+- `POST /provider/service-items` adds an item (`name`, `unitPriceMinor`, optional `category`). Billing, Finance and Admin only.
+- `PATCH /provider/service-items/:id` changes the name, category or price, or sets `active: false`. Items are switched off, not deleted, so old invoices keep their history.
+
+Invoices copy the name and price when they are made. Changing an item does not change an old invoice.
