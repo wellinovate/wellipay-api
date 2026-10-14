@@ -198,3 +198,14 @@ Migration `20261014070000_diagnostic_catalogue` is hand-written SQL.
 Patients do not see results through the patient API yet.
 
 Migration `20261014080000_invoice_lines_results` is hand-written SQL.
+
+## Patient results and SMS reminders
+
+**Patient results.** `GET /patient/results` (scope `patient.self.read`) returns the signed-in patient's ready results. A result appears only when it is ready and its test has `digitalResults` set on the price list. Results typed without a linked price list item are not shown. `inPersonCount` is the number of ready results the lab hands over in person.
+
+**SMS.** Reminders go through Termii. Set `TERMII_API_KEY` in Render. `TERMII_SENDER_ID` (default `N-Alert`) and `TERMII_CHANNEL` (`dnd` default, `generic` or `whatsapp`) are optional. The sender ID must be approved in your Termii account.
+
+- `GET /provider/sms-status` returns `{ "enabled": true | false }`.
+- `POST /provider/bookings/:id/reminder` with `{ "message" }` texts the patient. Only for a booking that is still `BOOKED`. Returns 503 until the key is set, 422 when the patient has no usable phone, and 409 if a reminder went out in the last 15 minutes. The booking records `reminderSentAt`.
+
+Migration `20261014090000_booking_reminder` is hand-written SQL.

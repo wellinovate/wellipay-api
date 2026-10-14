@@ -13,6 +13,7 @@ import patientRecordRoutes from "./routes/patientRecords.js";
 import serviceItemRoutes from "./routes/serviceItems.js";
 import catalogueRoutes from "./routes/catalogue.js";
 import resultRoutes from "./routes/results.js";
+import patientResultRoutes from "./routes/patientResults.js";
 import bookingRoutes from "./routes/bookings.js";
 import corporateAccountRoutes from "./routes/corporateAccounts.js";
 import claimRoutes from "./routes/claims.js";
@@ -100,6 +101,7 @@ export function buildApp() {
   app.register(serviceItemRoutes);
   app.register(catalogueRoutes);
   app.register(resultRoutes);
+  app.register(patientResultRoutes);
   app.register(bookingRoutes);
   app.register(corporateAccountRoutes);
   app.register(claimRoutes);

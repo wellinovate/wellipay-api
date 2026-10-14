@@ -5,10 +5,13 @@ import { sendProblem, problems } from "../lib/problem.js";
 import { resolveActor } from "../lib/actor.js";
 import { canMoveBooking, type BookingStatusValue } from "../lib/bookings.js";
 import { pendingResults } from "../lib/results.js";
+import { env } from "../env.js";
+import { normalizeNgPhone, sendSms, SmsError, reminderCooldownProblem } from "../lib/sms.js";
+import { z } from "zod";
 
 function serialize(b: {
   id: string; patientRef: string; type: string; kind: string; scheduledAt: Date; address: string | null; notes: string | null;
-  status: string; invoiceId: string | null; createdAt: Date; updatedAt: Date;
+  status: string; invoiceId: string | null; reminderSentAt?: Date | null; createdAt: Date; updatedAt: Date;
 }) {
   return {
     bookingId: b.id,
@@ -20,6 +23,7 @@ function serialize(b: {
     notes: b.notes ?? undefined,
     status: b.status,
     invoiceId: b.invoiceId ?? undefined,
+    reminderSentAt: b.reminderSentAt?.toISOString(),
     createdAt: b.createdAt.toISOString(),
     updatedAt: b.updatedAt.toISOString(),
   };
@@ -76,6 +80,37 @@ const bookingRoutes: FastifyPluginAsync = async (app) => {
       prisma.booking.count({ where }),
     ]);
     return reply.code(200).send({ items: rows.map(serialize), total, limit, offset });
+  });
+
+  app.get("/provider/sms-status", { preHandler: app.requireScope("mobile.integration.read") }, async (_request, reply) => {
+    return reply.code(200).send({ enabled: !!env.TERMII_API_KEY });
+  });
+
+  // Text the patient a reminder. Only for a booking that is still BOOKED.
+  app.post("/provider/bookings/:id/reminder", { preHandler: app.requireScope("mobile.integration.write") }, async (request, reply) => {
+    const parsed = z.object({ message: z.string().trim().min(10).max(600) }).safeParse(request.body);
+    if (!parsed.success) {
+      return sendProblem(reply, problems.badRequest(parsed.error.issues.map((i) => i.message).join("; "), "invalid_body"));
+    }
+    if (!env.TERMII_API_KEY) return sendProblem(reply, problems.serviceUnavailable("SMS is not set up yet.", "sms_not_configured"));
+    const tenantId = request.auth!.tenantId;
+    const { id } = request.params as { id: string };
+    const booking = await prisma.booking.findFirst({ where: { id, tenantId } });
+    if (!booking) return sendProblem(reply, problems.notFound("Booking not found."));
+    if (booking.status !== "BOOKED") return sendProblem(reply, problems.conflict("Reminders are for bookings that have not happened yet.", "booking_not_upcoming"));
+    const cooldown = reminderCooldownProblem(booking.reminderSentAt);
+    if (cooldown) return sendProblem(reply, problems.conflict(cooldown, "reminder_too_soon"));
+    const patient = await prisma.patientRecord.findUnique({ where: { tenantId_patientRef: { tenantId, patientRef: booking.patientRef } } });
+    const to = normalizeNgPhone(patient?.phone);
+    if (!to) return sendProblem(reply, problems.unprocessable("This patient has no usable phone number.", "no_phone"));
+    try {
+      await sendSms({ apiKey: env.TERMII_API_KEY, senderId: env.TERMII_SENDER_ID, channel: env.TERMII_CHANNEL }, to, parsed.data.message);
+    } catch (err) {
+      if (err instanceof SmsError) return sendProblem(reply, problems.badGateway(err.message, "sms_failed"));
+      throw err;
+    }
+    const updated = await prisma.booking.update({ where: { id }, data: { reminderSentAt: new Date() } });
+    return reply.code(200).send(serialize(updated));
   });
 
   app.patch("/provider/bookings/:id", { preHandler: app.requireScope("mobile.integration.write") }, async (request, reply) => {

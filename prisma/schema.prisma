@@ -1069,6 +1069,7 @@ model Booking {
   notes       String?
   status      BookingStatus @default(BOOKED)
   invoiceId   String?
+  reminderSentAt DateTime?
   createdBy   String?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
