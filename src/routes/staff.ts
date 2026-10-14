@@ -13,7 +13,7 @@ const CREATE_ROUTE = "POST /provider/staff";
 
 function serializeStaff(row: {
   id: string; name: string; email: string; role: string; accessLevel: string; branch: string | null;
-  status: string; invitedAt: Date; deactivatedAt: Date | null;
+  status: string; invitedAt: Date; deactivatedAt: Date | null; pharmacistLicenceNo?: string | null;
 }) {
   return {
     staffId: row.id,
@@ -25,6 +25,8 @@ function serializeStaff(row: {
     status: row.status,
     invitedAt: row.invitedAt.toISOString(),
     deactivatedAt: row.deactivatedAt ? row.deactivatedAt.toISOString() : undefined,
+    isPharmacist: Boolean(row.pharmacistLicenceNo),
+    pharmacistLicenceNo: row.pharmacistLicenceNo ?? undefined,
   };
 }
 
