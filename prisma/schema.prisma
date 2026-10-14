@@ -618,6 +618,9 @@ model Staff {
   // Failed sign-ins since the last success, and when a lockout ends. See src/lib/lockout.ts.
   failedLoginCount Int       @default(0)
   lockedUntil      DateTime?
+  // Set for a registered pharmacist. Only these staff verify prescriptions and
+  // approve prescription-only or controlled medicines for dispensing.
+  pharmacistLicenceNo String?
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
@@ -963,6 +966,9 @@ model ServiceItem {
   preparation    String?
   homeCollection Boolean  @default(false)
   digitalResults Boolean  @default(false)
+  // Set when this item is the price-list entry of a pharmacy product. Invoice
+  // lines point at the item, and the product is found through this id.
+  productId      String?  @unique
   createdBy      String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -1218,4 +1224,271 @@ model WalletTopUp {
 
   @@index([tenantId, patientRef, createdAt])
   @@map("wallet_top_ups")
+}
+
+enum ProductCategory {
+  MEDICINE
+  CONSUMABLE
+  DEVICE
+}
+
+// OTC can be sold over the counter. PRESCRIPTION_ONLY and CONTROLLED need a
+// verified prescription and a registered pharmacist.
+enum DispensingClass {
+  OTC
+  PRESCRIPTION_ONLY
+  CONTROLLED
+}
+
+enum BatchStatus {
+  ACTIVE
+  QUARANTINED
+}
+
+enum StockMovementKind {
+  RECEIPT
+  DISPENSE
+  ADJUSTMENT
+  WRITE_OFF
+}
+
+model Supplier {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  contactName String?
+  phone       String?
+  email       String?
+  address     String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@unique([tenantId, name])
+  @@map("suppliers")
+}
+
+// A stock-managed item. Quantities are counted in the selling unit and the
+// price is per selling unit.
+model PharmacyProduct {
+  id             String          @id @default(cuid())
+  tenantId       String
+  category       ProductCategory
+  genericName    String
+  brandName      String?
+  strength       String?
+  dosageForm     String?
+  packSize       String?
+  unit           String          @default("pack")
+  sku            String
+  barcode        String?
+  nafdacNumber   String?
+  manufacturer   String?
+  priceMinor     Int
+  dispensingClass DispensingClass @default(OTC)
+  reorderLevel   Int             @default(0)
+  active         Boolean         @default(true)
+  createdBy      String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  batches   StockBatch[]
+  movements StockMovement[]
+
+  @@unique([tenantId, sku])
+  @@index([tenantId, category, active])
+  @@map("pharmacy_products")
+}
+
+model StockBatch {
+  id               String      @id @default(cuid())
+  tenantId         String
+  productId        String
+  supplierId       String?
+  batchNo          String
+  expiryDate       DateTime?
+  quantityReceived Int
+  quantityOnHand   Int
+  costMinor        Int?
+  status           BatchStatus @default(ACTIVE)
+  quarantineReason String?
+  receivedAt       DateTime    @default(now())
+  receivedBy       String?
+
+  product   PharmacyProduct @relation(fields: [productId], references: [id])
+  movements StockMovement[]
+
+  @@unique([productId, batchNo, expiryDate])
+  @@index([tenantId, productId, expiryDate])
+  @@map("stock_batches")
+}
+
+// Every change to stock, with who and why. `quantity` is signed.
+model StockMovement {
+  id        String            @id @default(cuid())
+  tenantId  String
+  productId String
+  batchId   String
+  kind      StockMovementKind
+  quantity  Int
+  reason    String?
+  note      String?
+  reference String?
+  actor     String?
+  createdAt DateTime          @default(now())
+
+  product PharmacyProduct @relation(fields: [productId], references: [id])
+  batch   StockBatch      @relation(fields: [batchId], references: [id])
+
+  @@index([tenantId, productId, createdAt])
+  @@map("stock_movements")
+}
+
+enum PrescriptionStatus {
+  SUBMITTED
+  VERIFIED
+  REJECTED
+  CANCELLED
+  COMPLETED
+}
+
+enum PrescriptionSource {
+  PATIENT
+  STAFF
+}
+
+// A prescription a patient sent in, or staff entered for a walk-in. Only a
+// registered pharmacist can verify it. A refill is a new prescription row that
+// points at the original.
+model Prescription {
+  id                  String             @id @default(cuid())
+  tenantId            String
+  patientRef          String
+  source              PrescriptionSource
+  prescriberName      String?
+  prescriberLicenceNo String?
+  issuedOn            DateTime?
+  notes               String?
+  status              PrescriptionStatus @default(SUBMITTED)
+  verifiedBy          String?
+  verifiedAt          DateTime?
+  rejectionReason     String?
+  validUntil          DateTime?
+  // How many refills the pharmacist allowed when verifying the original.
+  refillsAllowed      Int                @default(0)
+  refillOfId          String?
+  createdBy           String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  items PrescriptionItem[]
+
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, patientRef, createdAt])
+  @@map("prescriptions")
+}
+
+model PrescriptionItem {
+  id             String  @id @default(cuid())
+  prescriptionId String
+  description    String
+  quantity       Int
+  directions     String?
+  // Set by the pharmacist at verification: the product that will be supplied.
+  productId      String?
+
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+
+  @@index([prescriptionId])
+  @@map("prescription_items")
+}
+
+enum PharmacyOrderStatus {
+  AWAITING_DISPENSING
+  DISPENSED
+  CANCELLED
+}
+
+enum Fulfilment {
+  PICKUP
+  DELIVERY
+}
+
+enum DeliveryStatus {
+  NOT_APPLICABLE
+  PENDING
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED
+}
+
+// The pharmacy's record of handing goods over. It is separate from the invoice:
+// a payment says money arrived, an order says the goods left the shelf.
+model PharmacyOrder {
+  id                    String              @id @default(cuid())
+  tenantId              String
+  invoiceId             String              @unique
+  patientRef            String
+  prescriptionId        String?
+  status                PharmacyOrderStatus @default(AWAITING_DISPENSING)
+  fulfilment            Fulfilment          @default(PICKUP)
+  deliveryAddress       String?
+  deliveryPhone         String?
+  deliveryFeeMinor      Int                 @default(0)
+  deliveryStatus        DeliveryStatus      @default(NOT_APPLICABLE)
+  courierName           String?
+  dispatchedAt          DateTime?
+  deliveredAt           DateTime?
+  deliveredToName       String?
+  // Six digits the patient shows the courier. Staff enter it to confirm the handover.
+  proofCode             String?
+  deliveryNote          String?
+  failureReason         String?
+  dispensedBy           String?
+  dispensedAt           DateTime?
+  handedToName          String?
+  paymentOverrideReason String?
+  cancelReason          String?
+  notes                 String?
+  createdBy             String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  lines PharmacyOrderLine[]
+
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, patientRef, createdAt])
+  @@map("pharmacy_orders")
+}
+
+model PharmacyOrderLine {
+  id             String @id @default(cuid())
+  orderId        String
+  productId      String
+  description    String
+  quantity       Int
+  unitPriceMinor Int
+  dispensed      Int    @default(0)
+
+  order       PharmacyOrder     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  allocations DispenseRecord[]
+
+  @@index([orderId])
+  @@map("pharmacy_order_lines")
+}
+
+// Which batch each unit came from. This is what makes a recall traceable.
+model DispenseRecord {
+  id          String   @id @default(cuid())
+  tenantId    String
+  orderLineId String
+  productId   String
+  batchId     String
+  quantity    Int
+  dispensedBy String
+  createdAt   DateTime @default(now())
+
+  orderLine PharmacyOrderLine @relation(fields: [orderLineId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, batchId])
+  @@map("dispense_records")
 }

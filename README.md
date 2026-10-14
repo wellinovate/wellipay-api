@@ -240,3 +240,37 @@ Reminders. A patient sets one reminder per unpaid bill: `GET /patient/reminders`
 Saved cards. A patient who ticks "save this card" on a payment gets the card stored after the webhook confirms the payment. Only Paystack's reusable token and the last four digits are kept. `GET /patient/payment-methods`, `DELETE /patient/payment-methods/:id`. `POST /patient/paystack/charges` accepts `saveCard` and `savedMethodId`. A saved-card payment is still confirmed by the webhook alone.
 
 Wallet. A wallet is prepaid credit with one provider. A top-up (`POST /patient/wallet/topups`) is an ordinary Paystack payment to the provider's subaccount, so the platform does not hold the money. The balance is what the provider owes the patient. `POST /patient/wallet/pay` spends credit on a bill and records a payment on the `wallet` channel. `GET /provider/wallet-summary` shows the total credit patients hold. Refunding unused credit is not built. Check with your lawyer or the CBN rules before you hold or move customer balances in any other way.
+
+## Pharmacy products and inventory
+
+Products. `POST /provider/pharmacy/products` lists a medicine, medical consumable or medical device. A medicine needs a generic name, strength, dosage form and pack size. Brand name, NAFDAC number, barcode, manufacturer, price, reorder level and a dispensing class (OTC, PRESCRIPTION_ONLY, CONTROLLED) are stored. Only a medicine can be prescription-only or controlled. Each product also gets a price-list entry, so it goes on an invoice like any other item. Changing the price changes the price list, not old invoices.
+
+Pharmacy services. `GET /provider/pharmacy/services` lists services a pharmacy may offer (counselling, blood pressure check, screening and others). `POST /provider/pharmacy/services/offers` adds the ones the pharmacy actually provides, at its own price. Nothing is on by default.
+
+Stock. Stock is held in batches with a batch number and expiry date. `POST /provider/pharmacy/stock/receipts` receives a batch from a supplier. A medicine needs an expiry date and expired stock is refused. `POST .../stock/adjustments` corrects a count with a reason. `POST .../stock/write-offs` removes an expired, damaged or recalled batch. `POST .../batches/:id/quarantine` holds a batch so it cannot be sold. Every change is written to a ledger (`GET .../stock/movements`) with who and why. Available stock counts only active, in-date batches. Selling takes the batch that expires first.
+
+Alerts. `GET /provider/pharmacy/inventory/alerts` lists low and empty stock against each product's reorder level, expired stock still on the shelf, and stock expiring within 90 days, with the stock value at cost.
+
+Suppliers. `GET`, `POST` and `PATCH /provider/pharmacy/suppliers`.
+
+Dispensing, prescriptions and delivery are a separate release. Payment does not dispense stock.
+
+## Pharmacy prescriptions, dispensing and delivery
+
+A payment record is not proof of dispensing. An order records what left the shelf, from which batch, and who released it.
+
+Prescriptions
+- `GET/POST /provider/prescriptions`: list and enter a prescription for a patient.
+- `PATCH /provider/prescriptions/:id/verify`: a registered pharmacist verifies or rejects. Verifying matches each item to a product and sets validity (1 to 180 days) and refills (0 to 5). A controlled medicine is valid for 30 days at most and has no refills.
+- `PATCH /provider/staff/:id/pharmacist`: an admin sets or clears a staff member's pharmacist licence number. A token with no signed-in staff member never counts as a pharmacist.
+- `GET/POST /patient/prescriptions`, `POST /patient/prescriptions/:id/refill`, `POST /patient/prescriptions/:id/cancel`: patient submission, refill requests and cancellation. A refill needs the last supply complete, none waiting, refills left and the original still valid. A pharmacist verifies every refill.
+
+Orders
+- `POST /provider/pharmacy/orders` creates an order from an invoice. Prescription-only and controlled lines need a prescription. A delivery needs an address and phone, and gets a six-digit proof code. The delivery fee comes from invoice lines in the "Delivery" category.
+- `POST /provider/pharmacy/orders/:id/dispense` checks, in one transaction: payment (Billing level or above can release unpaid goods with a reason on record), pharmacist and prescription coverage for restricted lines, and a collector's name for pickups. Stock comes from the earliest-expiring usable batches. Each batch used is written to a dispense record and a stock movement.
+- `GET /provider/pharmacy/orders/:id` shows the batch behind every unit, for recalls.
+- `POST .../:id/cancel` cancels an order that has not been dispensed.
+- `PATCH .../:id/delivery` records dispatch (courier name), delivery (proof code, or a note saying how the recipient was confirmed) and failure (reason).
+- `GET /patient/pharmacy-orders` shows status and delivery progress. The proof code shows only while a delivery is on its way.
+
+Not built: prescription photo upload, SMS when an order is ready or dispatched, courier integration, a controlled-drug register.
