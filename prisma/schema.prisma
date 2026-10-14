@@ -945,6 +945,12 @@ enum BookingType {
   HOME_COLLECTION
 }
 
+// LAB is a sample test. IMAGING is a scan, which ends in a report instead of a result.
+enum BookingKind {
+  LAB
+  IMAGING
+}
+
 enum BookingStatus {
   BOOKED
   SAMPLE_COLLECTED
@@ -959,6 +965,7 @@ model Booking {
   tenantId    String
   patientRef  String
   type        BookingType
+  kind        BookingKind   @default(LAB)
   scheduledAt DateTime
   address     String?
   notes       String?

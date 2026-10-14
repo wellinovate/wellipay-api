@@ -4,6 +4,8 @@ export const createBookingSchema = z
   .object({
     patientRef: z.string().trim().min(1).max(100),
     type: z.enum(["CENTRE_VISIT", "HOME_COLLECTION"]),
+    // LAB for a sample test, IMAGING for a scan. A scan is done at the centre.
+    kind: z.enum(["LAB", "IMAGING"]).default("LAB"),
     scheduledAt: z.string().datetime(),
     address: z.string().trim().min(5).max(240).optional(),
     notes: z.string().trim().max(500).optional(),
@@ -12,6 +14,10 @@ export const createBookingSchema = z
   .refine((v) => v.type !== "HOME_COLLECTION" || !!v.address, {
     message: "A home collection needs an address.",
     path: ["address"],
+  })
+  .refine((v) => !(v.kind === "IMAGING" && v.type === "HOME_COLLECTION"), {
+    message: "A scan is done at the centre, not as a home collection.",
+    path: ["type"],
   });
 
 export const updateBookingSchema = z
@@ -26,6 +32,7 @@ export const updateBookingSchema = z
 
 export const listBookingsQuerySchema = z.object({
   status: z.enum(["BOOKED", "SAMPLE_COLLECTED", "PROCESSING", "READY", "CANCELLED"]).optional(),
+  kind: z.enum(["LAB", "IMAGING"]).optional(),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "from must be YYYY-MM-DD").optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "to must be YYYY-MM-DD").optional(),
   limit: z.coerce.number().int().min(1).max(200).default(100),

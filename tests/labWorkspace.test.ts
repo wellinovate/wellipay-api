@@ -106,3 +106,16 @@ describe("invoice schema with an account", () => {
     expect(createInvoiceSchema.safeParse(inv).success).toBe(true);
   });
 });
+
+describe("imaging bookings", () => {
+  const base = { patientRef: "P-100000", scheduledAt: "2026-10-20T09:00:00.000Z" };
+  it("defaults to a lab booking", () => {
+    expect(createBookingSchema.parse({ ...base, type: "CENTRE_VISIT" }).kind).toBe("LAB");
+  });
+  it("accepts a scan at the centre", () => {
+    expect(createBookingSchema.safeParse({ ...base, type: "CENTRE_VISIT", kind: "IMAGING" }).success).toBe(true);
+  });
+  it("refuses a home collection for a scan", () => {
+    expect(createBookingSchema.safeParse({ ...base, type: "HOME_COLLECTION", kind: "IMAGING", address: "12 Aminu Kano Crescent" }).success).toBe(false);
+  });
+});

@@ -6,13 +6,14 @@ import { resolveActor } from "../lib/actor.js";
 import { canMoveBooking, type BookingStatusValue } from "../lib/bookings.js";
 
 function serialize(b: {
-  id: string; patientRef: string; type: string; scheduledAt: Date; address: string | null; notes: string | null;
+  id: string; patientRef: string; type: string; kind: string; scheduledAt: Date; address: string | null; notes: string | null;
   status: string; invoiceId: string | null; createdAt: Date; updatedAt: Date;
 }) {
   return {
     bookingId: b.id,
     patientRef: b.patientRef,
     type: b.type,
+    kind: b.kind,
     scheduledAt: b.scheduledAt.toISOString(),
     address: b.address ?? undefined,
     notes: b.notes ?? undefined,
@@ -44,6 +45,7 @@ const bookingRoutes: FastifyPluginAsync = async (app) => {
         tenantId,
         patientRef: body.patientRef,
         type: body.type,
+        kind: body.kind,
         scheduledAt: new Date(body.scheduledAt),
         address: body.address ?? null,
         notes: body.notes ?? null,
@@ -59,10 +61,11 @@ const bookingRoutes: FastifyPluginAsync = async (app) => {
     if (!parsed.success) {
       return sendProblem(reply, problems.badRequest(parsed.error.issues.map((i) => i.message).join("; "), "invalid_query"));
     }
-    const { status, from, to, limit, offset } = parsed.data;
+    const { status, kind, from, to, limit, offset } = parsed.data;
     const where = {
       tenantId: request.auth!.tenantId,
       ...(status ? { status } : {}),
+      ...(kind ? { kind } : {}),
       ...(from || to
         ? { scheduledAt: { ...(from ? { gte: new Date(`${from}T00:00:00.000Z`) } : {}), ...(to ? { lte: new Date(`${to}T23:59:59.999Z`) } : {}) } }
         : {}),
