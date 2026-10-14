@@ -118,3 +118,9 @@ REFUND_ID=... NOTE='reason' npm run recovery:waive
 ```
 
 These commands only change the record. They do not move money.
+
+## Refund status from Paystack
+
+A refund paid through Paystack stores Paystack's refund id and status when it is approved. Paystack moves it on afterwards (`pending`, `processing`, `processed`, `needs-attention`, `failed`). `POST /provider/refunds/:refundId/gateway-status` asks Paystack for the current status and saves it. The console calls it for refunds that have not reached `processed` or `failed`.
+
+If a refund ends as `failed` or `needs-attention`, the patient has not been paid. The console flags it. Contact Paystack support with the refund id.
