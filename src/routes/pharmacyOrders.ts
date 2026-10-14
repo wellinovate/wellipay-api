@@ -125,7 +125,7 @@ const pharmacyOrderRoutes: FastifyPluginAsync = async (app) => {
     const itemById = new Map(items.map((i: { id: string; productId: string | null; category: string | null }) => [i.id, i]));
     const productLines = invoice.lines.filter((l: { serviceItemId: string | null }) => l.serviceItemId && (itemById.get(l.serviceItemId) as { productId: string | null } | undefined)?.productId);
     if (productLines.length === 0) return sendProblem(reply, problems.unprocessable("This bill has no pharmacy products on it.", "no_products"));
-    const products = await prisma.pharmacyProduct.findMany({ where: { tenantId, id: { in: productLines.map((l: { serviceItemId: string }) => (itemById.get(l.serviceItemId) as { productId: string }).productId) } } });
+    const products = await prisma.pharmacyProduct.findMany({ where: { tenantId, id: { in: productLines.map((l: { serviceItemId: string | null }) => (itemById.get(l.serviceItemId as string) as { productId: string }).productId) } } });
     const productById = new Map(products.map((p: { id: string; dispensingClass: string }) => [p.id, p]));
     const needsRx = products.some((p: { dispensingClass: string }) => needsPharmacist(p.dispensingClass));
 
@@ -163,8 +163,8 @@ const pharmacyOrderRoutes: FastifyPluginAsync = async (app) => {
           : {}),
         ...(b.notes !== undefined ? { notes: b.notes } : {}),
         lines: {
-          create: productLines.map((l: { serviceItemId: string; description: string; quantity: number; unitPriceMinor: number }) => ({
-            productId: (itemById.get(l.serviceItemId) as { productId: string }).productId,
+          create: productLines.map((l: { serviceItemId: string | null; description: string; quantity: number; unitPriceMinor: number }) => ({
+            productId: (itemById.get(l.serviceItemId as string) as { productId: string }).productId,
             description: l.description,
             quantity: l.quantity,
             unitPriceMinor: l.unitPriceMinor,
