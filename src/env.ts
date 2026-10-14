@@ -39,6 +39,8 @@ const schema = z.object({
   PAYSTACK_SECRET_KEY: z.string().min(1).optional(),
   // Share of each provider payment kept by the platform, in percent (0-100).
   // Applied when a provider is approved, so changing it affects new providers only.
+  // Longest a staff member can stay signed in by renewing, in hours.
+  SESSION_MAX_HOURS: z.coerce.number().min(1).max(72).default(8),
   PLATFORM_FEE_PERCENT: z.coerce.number().min(0).max(100).default(0),
   // Where Paystack sends the payer after checkout. Optional.
   PAYSTACK_CALLBACK_URL: z.string().url().optional(),

@@ -3,7 +3,8 @@ import argon2 from "argon2";
 import { staffLoginSchema } from "../schemas/staffAuth.js";
 import { prisma } from "../lib/prisma.js";
 import { isLocked, minutesRemaining, afterFailure, clearedState } from "../lib/lockout.js";
-import { issueAccessToken } from "../lib/tokens.js";
+import { issueAccessToken, verifyAccessToken } from "../lib/tokens.js";
+import { planRenewal } from "../lib/session.js";
 import { sendProblem, problems } from "../lib/problem.js";
 import { env } from "../env.js";
 
@@ -84,6 +85,7 @@ const staffAuthRoutes: FastifyPluginAsync = async (app) => {
         staffName: staff.name,
         staffRole: staff.role,
         staffLevel: staff.accessLevel,
+        sessionStart: Math.floor(now.getTime() / 1000),
       });
 
       const tenant = await prisma.tenant.findUnique({ where: { id: staff.tenantId }, select: { name: true, providerType: true } });
@@ -96,6 +98,72 @@ const staffAuthRoutes: FastifyPluginAsync = async (app) => {
         // Lets the console show the provider's own name. Tenants created
         // before provider types existed have none and count as hospitals.
         tenant: { name: tenant?.name ?? "", providerType: tenant?.providerType ?? "HOSPITAL" },
+      });
+    }
+  );
+
+  // Swaps a still-valid staff token for a fresh one. Access level, name and
+  // active status are read again, so a deactivation or a level change takes
+  // effect at the next renewal.
+  app.post(
+    "/staff/refresh",
+    {
+      config: {
+        rateLimit: {
+          max: 60,
+          timeWindow: "1 minute",
+          errorResponseBuilder: (_request, context) => {
+            const err = new Error(`Rate limit exceeded, retry in ${context.after}.`) as Error & { statusCode?: number };
+            err.statusCode = context.statusCode;
+            return err;
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const header = request.headers.authorization;
+      if (!header?.startsWith("Bearer ")) return sendProblem(reply, problems.unauthorized("Missing bearer token."));
+      let claims;
+      try {
+        claims = await verifyAccessToken(header.slice("Bearer ".length));
+      } catch {
+        return sendProblem(reply, problems.unauthorized("Token is invalid, expired, or malformed.", "session_expired"));
+      }
+      if (!claims.staffName || claims.patientRef !== undefined) {
+        return sendProblem(reply, problems.forbidden("Only a staff token can be renewed here."));
+      }
+
+      const staff = await prisma.staff.findFirst({ where: { id: claims.sub, tenantId: claims.tenantId } });
+      if (!staff || staff.status !== "ACTIVE") {
+        return sendProblem(reply, problems.unauthorized("This account is no longer active.", "session_expired"));
+      }
+
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      // Tokens from before renewal existed carry no start time. They get a
+      // fresh clock once.
+      const start = claims.sessionStart ?? nowSeconds;
+      const plan = planRenewal(start, nowSeconds, env.SESSION_MAX_HOURS);
+      if (!plan.allowed) {
+        return sendProblem(reply, problems.unauthorized("Your session has reached its time limit. Sign in again.", "session_limit_reached"));
+      }
+
+      const { token, expiresIn } = await issueAccessToken(
+        {
+          sub: staff.id,
+          tenantId: staff.tenantId,
+          scopes: ["mobile.integration.read", "mobile.integration.write"],
+          staffName: staff.name,
+          staffRole: staff.role,
+          staffLevel: staff.accessLevel,
+          sessionStart: start,
+        },
+        plan.expiresInSeconds
+      );
+      return reply.code(200).send({
+        access_token: token,
+        token_type: "Bearer",
+        expires_in: expiresIn,
+        staff: { staffId: staff.id, name: staff.name, email: staff.email, role: staff.role, accessLevel: staff.accessLevel },
       });
     }
   );
