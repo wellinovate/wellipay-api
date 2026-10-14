@@ -119,6 +119,12 @@ REFUND_ID=... NOTE='reason' npm run recovery:waive
 
 These commands only change the record. They do not move money.
 
+## Staying signed in
+
+A staff token lasts 15 minutes. `POST /staff/refresh` swaps a token that has not yet expired for a new one, so a person who keeps working stays signed in. A token that has already expired cannot be renewed, so 15 minutes without a request still signs them out.
+
+The sign-in time travels inside every renewed token. Renewal stops `SESSION_MAX_HOURS` after sign-in (default 8), whatever the activity. The refresh reads the staff record again: a deactivated account or a changed access level takes effect at the next renewal.
+
 ## Refund status from Paystack
 
 A refund paid through Paystack stores Paystack's refund id and status when it is approved. Paystack moves it on afterwards (`pending`, `processing`, `processed`, `needs-attention`, `failed`). `POST /provider/refunds/:refundId/gateway-status` asks Paystack for the current status and saves it. The console calls it for refunds that have not reached `processed` or `failed`.
