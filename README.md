@@ -100,7 +100,7 @@ Any provider (hospital, diagnostic lab, pharmacy, independent practitioner) join
    - `APPLICATION_ID=... REASON='...' npm run provider:reject` rejects it.
 3. The provider signs in to the console with the contact email and the password you set.
 
-Online payments for a tenant with a Paystack subaccount settle to that provider's bank account. The provider bears Paystack's fee. `PLATFORM_FEE_PERCENT` is the share the platform keeps, set when a provider is approved. The first tenant, created by the seed script, has no subaccount and settles to the platform account.
+Online payments for a tenant with a Paystack subaccount settle to that provider's bank account. The provider bears Paystack's fee. `PLATFORM_FEE_PERCENT` is the share the platform keeps (default 1). It is set on the Paystack subaccount when a provider is approved. To bring providers approved earlier in line, run `npm run provider:set-fee` (a preview) and then `CONFIRM=yes npm run provider:set-fee`. The first tenant, created by the seed script, has no subaccount and settles to the platform account.
 
 ## Refunds on split payments
 
