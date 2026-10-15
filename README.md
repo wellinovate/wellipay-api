@@ -297,3 +297,78 @@ Controlled-drug register
 
 Cost access
 - Unit cost and stock value are returned only to Admin and Finance staff. Billing can enter a cost on a receipt but not read it back.
+
+## Health-record connections
+
+A patient can connect their WelliPay profile to a health-record identifier. There are three kinds.
+
+| Kind | Reference | How it is verified |
+| --- | --- | --- |
+| `WELLIRECORD` | WR-ID | One-time code sent by WelliRecord, checked by WelliRecord |
+| `EXTERNAL_SYSTEM` | The other system's patient ID | Same handshake, through an integration Wellinovate approved |
+| `PROVIDER_PATIENT_NUMBER` | A hospital or lab patient number | Staff at that provider approve it in the console |
+
+An identifier is a reference. Knowing a WR-ID or a patient number proves nothing about who the person is, and a connection never gives anyone access to records. Every response carries `grantsRecordAccess: false` and a notice saying so.
+
+Rules the API enforces:
+
+- A verified reference belongs to one WelliPay account. A partial unique index on verified rows enforces this. The owner must revoke the link before anyone else can claim the reference.
+- Patient numbers are scoped to the provider. The same number at two providers is two references.
+- A code lasts 10 minutes and allows 5 wrong tries. Each try is counted before the partner is asked.
+- A patient can hold 10 open or verified connections.
+- The patient or the provider can revoke. Every change is written to `record_connection_events`, which a trigger keeps append-only.
+
+### Patient endpoints
+
+- `GET /patient/record-integrations`: systems available to connect.
+- `GET /patient/record-connections`: the patient's connections.
+- `POST /patient/record-connections` with `{ kind, integrationKey?, reference }`. Partner kinds return `nextStep: "ENTER_CODE"`. Patient numbers return `AWAIT_PROVIDER_REVIEW`.
+- `POST /patient/record-connections/:id/confirm` with `{ code }`.
+- `POST /patient/record-connections/:id/revoke`.
+
+### Provider endpoints
+
+- `GET /provider/record-connections?status=&kind=`: Front desk and above.
+- `PATCH /provider/record-connections/:id/decision` with `{ decision: "APPROVE" | "REJECT", note? }`: Billing and above. Approve only after comparing the patient's name and phone on the registry with the number in the facility's own system.
+- `POST /provider/record-connections/:id/revoke`: Billing and above.
+
+### Registering a partner
+
+Run from the Render shell. Only Wellinovate does this.
+
+```
+KEY=wellirecord NAME='WelliRecord' KIND=WELLIRECORD BASE_URL=https://<host> npm run integration:register
+npm run integration:list
+KEY=wellirecord npm run integration:disable
+```
+
+Then set `RECORD_INTEGRATION_<KEY>_API_KEY` in Render (for example `RECORD_INTEGRATION_WELLIRECORD_API_KEY`) and redeploy. A partner without that variable is not shown to patients. The key is never stored in the database.
+
+### Partner API (what WelliRecord and other systems implement)
+
+All calls are HTTPS `POST` with JSON. Headers on every call:
+
+- `Authorization: Bearer <partner API key>`
+- `X-WelliPay-Timestamp`: Unix seconds. Reject calls more than 5 minutes old.
+- `X-WelliPay-Signature`: `sha256=<hex>`, the HMAC-SHA256 of `<timestamp>.<raw body>` keyed with the partner API key.
+
+Start a verification:
+
+```
+POST {baseUrl}/wellipay/v1/verifications
+{ "requestId": "uuid", "reference": "WR-2291-04" }
+```
+
+The partner sends a one-time code (6 digits) to the contact it holds for that reference, by SMS or email. It answers `202` whether or not the reference exists. WelliPay never receives the contact details, and the response must not reveal whether the reference exists.
+
+Confirm a code:
+
+```
+POST {baseUrl}/wellipay/v1/verifications/{requestId}/confirm
+{ "code": "123456" }
+```
+
+- `200 { "verified": true, "reference": "WR-2291-04" }` when the code is right. The reference must match the one sent.
+- `200 { "verified": false }`, or `400`, `404`, `410`, `422` when the code is wrong, unknown or expired.
+
+The partner should expire codes after 10 minutes and make each code single-use.

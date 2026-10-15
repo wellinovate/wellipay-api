@@ -20,6 +20,7 @@ import pharmacyInventoryRoutes from "./routes/pharmacyInventory.js";
 import pharmacyPrescriptionRoutes from "./routes/pharmacyPrescriptions.js";
 import pharmacyOrderRoutes from "./routes/pharmacyOrders.js";
 import patientPharmacyRoutes from "./routes/patientPharmacy.js";
+import recordConnectionRoutes from "./routes/recordConnections.js";
 import pharmacyRegisterRoutes from "./routes/pharmacyRegister.js";
 import pharmacyCourierRoutes from "./routes/pharmacyCouriers.js";
 import courierWebhookRoutes from "./routes/courierWebhook.js";
@@ -124,6 +125,7 @@ export function buildApp() {
   app.register(pharmacyPrescriptionRoutes);
   app.register(pharmacyOrderRoutes);
   app.register(patientPharmacyRoutes);
+  app.register(recordConnectionRoutes);
   app.register(pharmacyRegisterRoutes);
   app.register(pharmacyCourierRoutes);
   app.register(pharmacyImageRoutes);

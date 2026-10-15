@@ -1602,3 +1602,81 @@ model ControlledRegisterEntry {
   @@index([tenantId, createdAt])
   @@map("controlled_register_entries")
 }
+
+// A patient's link between their WelliPay profile and a health-record
+// identifier. The identifier is a reference, not proof of identity, and a link
+// never gives anyone access to records. A link is VERIFIED only after the
+// partner confirms a one-time code the patient typed (WELLIRECORD and
+// EXTERNAL_SYSTEM), or after provider staff approve it (PROVIDER_PATIENT_NUMBER).
+enum RecordConnectionKind {
+  WELLIRECORD
+  EXTERNAL_SYSTEM
+  PROVIDER_PATIENT_NUMBER
+}
+
+enum RecordConnectionStatus {
+  PENDING_VERIFICATION
+  VERIFIED
+  REJECTED
+  REVOKED
+  EXPIRED
+}
+
+enum RecordIntegrationStatus {
+  ACTIVE
+  DISABLED
+}
+
+// Partner systems Wellinovate has approved (npm run integration:register). The
+// partner's API key is read from RECORD_INTEGRATION_<KEY>_API_KEY, never stored.
+model RecordIntegration {
+  id        String                  @id @default(cuid())
+  key       String                  @unique
+  name      String
+  kind      RecordConnectionKind
+  baseUrl   String
+  status    RecordIntegrationStatus @default(ACTIVE)
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
+
+  @@map("record_integrations")
+}
+
+// One verified owner per (scopeKey, externalRef): a partial unique index in the
+// migration, which Prisma cannot express.
+model RecordConnection {
+  id               String                 @id @default(cuid())
+  patientAccountId String
+  tenantId         String
+  kind             RecordConnectionKind
+  integrationKey   String?
+  scopeKey         String
+  externalRef      String
+  status           RecordConnectionStatus @default(PENDING_VERIFICATION)
+  requestId        String                 @unique
+  codeAttempts     Int                    @default(0)
+  codeExpiresAt    DateTime?
+  decidedBy        String?
+  decisionNote     String?
+  verifiedAt       DateTime?
+  revokedAt        DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  @@index([patientAccountId])
+  @@index([tenantId, kind, status])
+  @@map("record_connections")
+}
+
+// Append-only history (a database trigger blocks UPDATE and DELETE).
+model RecordConnectionEvent {
+  id           String   @id @default(cuid())
+  connectionId String
+  event        String
+  actor        String
+  note         String?
+  createdAt    DateTime @default(now())
+
+  @@index([connectionId, createdAt])
+  @@map("record_connection_events")
+}
