@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma.js";
 import { setRefundLimitSchema } from "../schemas/account.js";
 import { sendProblem, problems } from "../lib/problem.js";
 import { toMinorBigInt, toMinorNumber } from "../lib/money.js";
+import { env } from "../env.js";
 
 const accountSelect = {
   name: true,
@@ -37,6 +38,31 @@ const accountRoutes: FastifyPluginAsync = async (app) => {
     const tenant = await prisma.tenant.findUnique({ where: { id: request.auth!.tenantId }, select: accountSelect });
     if (!tenant) return sendProblem(reply, problems.notFound());
     return reply.code(200).send(serializeAccount(tenant));
+  });
+
+  // What is set up on this service for the tenant. Reports whether each service
+  // is configured and the state of the tenant's own webhook queue. It makes no
+  // call to Paystack or Termii, so "configured" means a key is present, not that
+  // the provider accepts it.
+  app.get("/provider/integrations/status", { preHandler: app.requireScope("mobile.integration.read") }, async (request, reply) => {
+    const tenantId = request.auth!.tenantId;
+    const [tenant, activeEndpoints, pendingEvents, deadEvents, lastDelivered] = await Promise.all([
+      prisma.tenant.findUnique({ where: { id: tenantId }, select: { paystackSubaccountCode: true } }),
+      prisma.webhookEndpoint.count({ where: { tenantId, active: true } }),
+      prisma.outboxEvent.count({ where: { tenantId, status: "PENDING" } }),
+      prisma.outboxEvent.count({ where: { tenantId, status: "DEAD_LETTERED" } }),
+      prisma.outboxEvent.findFirst({ where: { tenantId, status: "DELIVERED" }, orderBy: { deliveredAt: "desc" }, select: { deliveredAt: true } }),
+    ]);
+    return reply.code(200).send({
+      paystack: { configured: Boolean(env.PAYSTACK_SECRET_KEY), hasPayoutAccount: Boolean(tenant?.paystackSubaccountCode) },
+      sms: { configured: Boolean(env.TERMII_API_KEY), senderId: env.TERMII_SENDER_ID },
+      webhooks: {
+        activeEndpoints,
+        pendingEvents,
+        deadLetteredEvents: deadEvents,
+        lastDeliveredAt: lastDelivered?.deliveredAt?.toISOString(),
+      },
+    });
   });
 
   app.patch("/provider/account/refund-limit", { preHandler: app.requireScope("mobile.integration.write") }, async (request, reply) => {

@@ -43,5 +43,6 @@ describe("account route access", () => {
   it("lets Finance read and only Admin change the limit", () => {
     expect(allowedLevels("GET", "/provider/account")).toEqual(["ADMIN", "FINANCE"]);
     expect(allowedLevels("PATCH", "/provider/account/refund-limit")).toEqual(["ADMIN"]);
+    expect(allowedLevels("GET", "/provider/integrations/status")).toEqual(["ADMIN"]);
   });
 });

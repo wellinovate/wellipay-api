@@ -170,6 +170,7 @@ export const ROUTE_RULES: ReadonlyArray<readonly [string, string, Levels]> = [
   // Account: Finance can read the settlement account and refund limit. Only Admin changes the limit.
   ["GET", "/provider/account", FINANCE_ONLY],
   ["PATCH", "/provider/account/refund-limit", ADMIN_ONLY],
+  ["GET", "/provider/integrations/status", ADMIN_ONLY],
 
   // Staff directory and webhooks: Admin only.
   ["GET", "/provider/staff", ADMIN_ONLY],
