@@ -1,5 +1,7 @@
-// A refund above the tenant's limit needs two different approvers. A refund at
-// or below the limit, or with no limit set, needs one. A rejection always needs one.
+// The person who asked for a refund cannot approve it. They can reject it, which
+// withdraws the request. A refund above the tenant's limit needs two different
+// approvers. A refund at or below the limit, or with no limit set, needs one.
+// A rejection always needs one.
 export type ApprovalStep =
   | { kind: "FINAL" }
   | { kind: "FIRST" }
@@ -9,10 +11,18 @@ export function approvalStep(input: {
   limitMinor: bigint | null;
   amountMinor: bigint;
   firstApprovedBy: string | null;
+  requestedBy: string;
   actor: string;
   decision: "APPROVED" | "REJECTED";
 }): ApprovalStep {
   if (input.decision === "REJECTED") return { kind: "FINAL" };
+  if (input.requestedBy === input.actor) {
+    return {
+      kind: "BLOCKED",
+      code: "requester_cannot_approve",
+      message: "You requested this refund, so someone else must approve it.",
+    };
+  }
   if (input.limitMinor === null || input.amountMinor <= input.limitMinor) return { kind: "FINAL" };
   if (input.firstApprovedBy === null) return { kind: "FIRST" };
   if (input.firstApprovedBy === input.actor) {
