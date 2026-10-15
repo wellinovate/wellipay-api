@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createApplicationSchema } from "../src/schemas/onboarding.js";
-import { listBanks, resolveAccount, createSubaccount, initializeTransaction, PaystackError } from "../src/lib/paystack.js";
+import { listBanks, resolveAccount, createSubaccount, updateSubaccountPercentage, initializeTransaction, PaystackError } from "../src/lib/paystack.js";
 
 const secret = "sk_test_example";
 const json = (data: unknown, status = 200) => (async () => new Response(JSON.stringify(data), { status })) as unknown as typeof fetch;
@@ -98,5 +98,22 @@ describe("initializeTransaction with a subaccount", () => {
     await initializeTransaction(secret, { email: "a@b.com", amountMinor: 5000, reference: "wp_1", subaccount: null }, fake);
     expect(sent.body).not.toHaveProperty("subaccount");
     expect(sent.body).not.toHaveProperty("bearer");
+  });
+});
+
+describe("updateSubaccountPercentage", () => {
+  it("PUTs the new share to the subaccount", async () => {
+    let seen: { url: string; method?: string; body?: string } | undefined;
+    const fake = (async (url: string, init: RequestInit) => {
+      seen = { url, method: init.method, body: String(init.body) };
+      return new Response(JSON.stringify({ status: true }), { status: 200 });
+    }) as unknown as typeof fetch;
+    await updateSubaccountPercentage(secret, "ACCT_abc123", 1, fake);
+    expect(seen?.url).toContain("/subaccount/ACCT_abc123");
+    expect(seen?.method).toBe("PUT");
+    expect(JSON.parse(seen!.body!)).toEqual({ percentage_charge: 1 });
+  });
+  it("raises Paystack's message when it refuses", async () => {
+    await expect(updateSubaccountPercentage(secret, "ACCT_x", 1, json({ status: false, message: "Subaccount not found" }, 404))).rejects.toThrow("Subaccount not found");
   });
 });

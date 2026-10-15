@@ -271,3 +271,14 @@ export async function createSubaccount(secret: string, input: SubaccountInput, f
   }
   return { subaccountCode: payload.data.subaccount_code };
 }
+
+// Changes the platform's share on an existing subaccount.
+export async function updateSubaccountPercentage(secret: string, subaccountCode: string, platformPercent: number, fetchImpl: typeof fetch = fetch): Promise<void> {
+  const res = await fetchImpl(`${BASE_URL}/subaccount/${encodeURIComponent(subaccountCode)}`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ percentage_charge: platformPercent }),
+  });
+  const payload = (await res.json().catch(() => null)) as { status?: boolean; message?: string } | null;
+  if (!res.ok || !payload?.status) throw new PaystackError(payload?.message ?? `Paystack returned HTTP ${res.status}`);
+}

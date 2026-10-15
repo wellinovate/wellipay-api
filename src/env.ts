@@ -38,10 +38,11 @@ const schema = z.object({
   // Paystack signs webhooks with, so POST /webhooks/paystack needs it too.
   PAYSTACK_SECRET_KEY: z.string().min(1).optional(),
   // Share of each provider payment kept by the platform, in percent (0-100).
-  // Applied when a provider is approved, so changing it affects new providers only.
+  // Applied when a provider is approved. Providers approved earlier keep their
+  // old share until `npm run provider:set-fee` updates them at Paystack.
   // Longest a staff member can stay signed in by renewing, in hours.
   SESSION_MAX_HOURS: z.coerce.number().min(1).max(72).default(8),
-  PLATFORM_FEE_PERCENT: z.coerce.number().min(0).max(100).default(0),
+  PLATFORM_FEE_PERCENT: z.coerce.number().min(0).max(100).default(1),
   // Termii SMS. Optional: the reminder route returns 503 until the key is set.
   TERMII_API_KEY: z.string().min(1).optional(),
   TERMII_SENDER_ID: z.string().min(3).max(11).default("N-Alert"),

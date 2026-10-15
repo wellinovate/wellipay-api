@@ -19,6 +19,7 @@
     "provider:list": "node dist/scripts/providerApplications.js list",
     "provider:approve": "node dist/scripts/providerApplications.js approve",
     "provider:reject": "node dist/scripts/providerApplications.js reject",
+    "provider:set-fee": "node dist/scripts/providerFee.js",
     "integration:list": "node dist/scripts/recordIntegrations.js list",
     "integration:register": "node dist/scripts/recordIntegrations.js register",
     "integration:disable": "node dist/scripts/recordIntegrations.js disable",
