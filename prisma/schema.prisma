@@ -47,6 +47,11 @@ model Tenant {
   settlementAccountName   String?
   // Refunds above this amount need two different approvers. Null means one approver is enough.
   refundApprovalLimitMinor BigInt?
+  // Commercial terms. All null until Wellinovate records them (npm run provider:set-plan); the API never invents a plan.
+  planName              String?
+  planMonthlyFeeMinor   BigInt?
+  platformFeePercent    Decimal? @db.Decimal(5, 2)
+  planStartedAt         DateTime?
 
   credentials      ApiCredential[]
   invoices         Invoice[]

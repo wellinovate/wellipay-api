@@ -20,6 +20,7 @@
     "provider:approve": "node dist/scripts/providerApplications.js approve",
     "provider:reject": "node dist/scripts/providerApplications.js reject",
     "integration:list": "node dist/scripts/recordIntegrations.js list",
+    "provider:set-plan": "node dist/scripts/providerPlan.js",
     "integration:register": "node dist/scripts/recordIntegrations.js register",
     "integration:disable": "node dist/scripts/recordIntegrations.js disable",
     "recovery:list": "node dist/scripts/refundRecoveries.js list",

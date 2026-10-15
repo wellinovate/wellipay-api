@@ -4,6 +4,7 @@ import { setRefundLimitSchema } from "../schemas/account.js";
 import { sendProblem, problems } from "../lib/problem.js";
 import { toMinorBigInt, toMinorNumber } from "../lib/money.js";
 import { env } from "../env.js";
+import { serializeSubscription } from "../lib/subscription.js";
 
 const accountSelect = {
   name: true,
@@ -38,6 +39,16 @@ const accountRoutes: FastifyPluginAsync = async (app) => {
     const tenant = await prisma.tenant.findUnique({ where: { id: request.auth!.tenantId }, select: accountSelect });
     if (!tenant) return sendProblem(reply, problems.notFound());
     return reply.code(200).send(serializeAccount(tenant));
+  });
+
+  // Plan and fee terms. Values are null when Wellinovate has not recorded them.
+  app.get("/provider/subscription", { preHandler: app.requireScope("mobile.integration.read") }, async (request, reply) => {
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: request.auth!.tenantId },
+      select: { planName: true, planMonthlyFeeMinor: true, platformFeePercent: true, planStartedAt: true },
+    });
+    if (!tenant) return sendProblem(reply, problems.notFound());
+    return reply.code(200).send(serializeSubscription(tenant, env.PLATFORM_FEE_PERCENT));
   });
 
   // What is set up on this service for the tenant. Reports whether each service
