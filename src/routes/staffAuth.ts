@@ -7,6 +7,7 @@ import { issueAccessToken, verifyAccessToken } from "../lib/tokens.js";
 import { planRenewal } from "../lib/session.js";
 import { sendProblem, problems } from "../lib/problem.js";
 import { env } from "../env.js";
+import { recordAudit } from "../lib/auditWriter.js";
 
 // Per-staff login, replacing the single shared frontend token as the
 // identity behind write actions. Every staff token carries the same two
@@ -72,6 +73,8 @@ const staffAuthRoutes: FastifyPluginAsync = async (app) => {
       const validPassword = await argon2.verify(staff.passwordHash, password).catch(() => false);
       if (!validPassword) {
         await prisma.staff.update({ where: { id: staff.id }, data: afterFailure(staff, now) });
+        // The email matched a staff member, so the failed attempt belongs on their provider's trail.
+        await recordAudit({ tenantId: staff.tenantId, actorType: "STAFF", actorId: staff.id, actorName: staff.name, action: "Failed sign-in attempt", method: "POST", route: "/staff/login", statusCode: 401, ipAddress: request.ip }, request.log);
         return genericFailure();
       }
       if (staff.failedLoginCount > 0 || staff.lockedUntil) {
@@ -89,6 +92,7 @@ const staffAuthRoutes: FastifyPluginAsync = async (app) => {
       });
 
       const tenant = await prisma.tenant.findUnique({ where: { id: staff.tenantId }, select: { name: true, providerType: true } });
+      await recordAudit({ tenantId: staff.tenantId, actorType: "STAFF", actorId: staff.id, actorName: staff.name, action: "Signed in", method: "POST", route: "/staff/login", statusCode: 200, ipAddress: request.ip }, request.log);
 
       return reply.code(200).send({
         access_token: token,

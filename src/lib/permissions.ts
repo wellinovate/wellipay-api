@@ -150,6 +150,9 @@ export const ROUTE_RULES: ReadonlyArray<readonly [string, string, Levels]> = [
   ["PATCH", "/provider/record-connections/:id/decision", BILLING_WORK],
   ["POST", "/provider/record-connections/:id/revoke", BILLING_WORK],
 
+  // The audit trail names staff and what they did. Admin and Finance only.
+  ["GET", "/provider/audit-events", FINANCE_ONLY],
+
   ["GET", "/provider/referrals", EVERYONE],
   ["POST", "/provider/referrals", FRONT_DESK],
   ["PATCH", "/provider/referrals/:id/status", FRONT_DESK],

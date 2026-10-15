@@ -21,6 +21,8 @@ import pharmacyPrescriptionRoutes from "./routes/pharmacyPrescriptions.js";
 import pharmacyOrderRoutes from "./routes/pharmacyOrders.js";
 import patientPharmacyRoutes from "./routes/patientPharmacy.js";
 import recordConnectionRoutes from "./routes/recordConnections.js";
+import auditEventRoutes from "./routes/auditEvents.js";
+import auditTrailPlugin from "./plugins/auditTrail.js";
 import pharmacyRegisterRoutes from "./routes/pharmacyRegister.js";
 import pharmacyCourierRoutes from "./routes/pharmacyCouriers.js";
 import courierWebhookRoutes from "./routes/courierWebhook.js";
@@ -106,6 +108,7 @@ export function buildApp() {
   // reaches the route handler.
   app.register(formbody);
   app.register(authPlugin);
+  app.register(auditTrailPlugin);
 
   app.get("/healthz", async () => ({ status: "ok" }));
 
@@ -126,6 +129,7 @@ export function buildApp() {
   app.register(pharmacyOrderRoutes);
   app.register(patientPharmacyRoutes);
   app.register(recordConnectionRoutes);
+  app.register(auditEventRoutes);
   app.register(pharmacyRegisterRoutes);
   app.register(pharmacyCourierRoutes);
   app.register(pharmacyImageRoutes);

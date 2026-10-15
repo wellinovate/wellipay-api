@@ -1685,3 +1685,24 @@ model RecordConnectionEvent {
   @@index([connectionId, createdAt])
   @@map("record_connection_events")
 }
+
+// Saved audit trail. One row per successful write by staff or an integration.
+// Append-only (a database trigger blocks UPDATE and DELETE). Request bodies are
+// never stored, so no patient data or secret lands here.
+model AuditEvent {
+  id         String   @id @default(cuid())
+  tenantId   String
+  actorType  String // STAFF | CLIENT | SYSTEM
+  actorId    String?
+  actorName  String?
+  action     String
+  method     String
+  route      String
+  resourceId String?
+  statusCode Int
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("audit_events")
+}
