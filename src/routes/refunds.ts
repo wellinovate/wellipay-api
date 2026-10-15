@@ -222,6 +222,7 @@ const refundRoutes: FastifyPluginAsync = async (app) => {
         limitMinor: limit?.refundApprovalLimitMinor ?? null,
         amountMinor: refund.amountMinor,
         firstApprovedBy: refund.firstApprovedBy,
+        requestedBy: refund.requestedBy,
         actor,
         decision: body.decision,
       });
