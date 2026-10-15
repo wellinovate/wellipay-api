@@ -144,6 +144,12 @@ export const ROUTE_RULES: ReadonlyArray<readonly [string, string, Levels]> = [
   ["GET", "/provider/pre-authorizations", EVERYONE],
   ["PATCH", "/provider/pre-authorizations/:id", BILLING_WORK],
 
+  // Patient number reviews and link revocation. The review compares a name and
+  // phone with the facility's own records, so it is Billing work and above.
+  ["GET", "/provider/record-connections", FRONT_DESK],
+  ["PATCH", "/provider/record-connections/:id/decision", BILLING_WORK],
+  ["POST", "/provider/record-connections/:id/revoke", BILLING_WORK],
+
   ["GET", "/provider/referrals", EVERYONE],
   ["POST", "/provider/referrals", FRONT_DESK],
   ["PATCH", "/provider/referrals/:id/status", FRONT_DESK],
