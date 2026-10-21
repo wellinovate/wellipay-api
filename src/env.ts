@@ -49,6 +49,11 @@ const schema = z.object({
   TERMII_CHANNEL: z.enum(["generic", "dnd", "whatsapp"]).default("dnd"),
   // Public payment page (the console site's pay.html). Guests are sent back here after checkout.
   PAY_PAGE_URL: z.string().url().optional(),
+  // Where to hand on Paystack events for payments this service did not create
+  // (references starting wr- or wo-: WelliRecord consultation and pharmacy
+  // payments). Example: https://wellirecordmobileapp.onrender.com/api/v1/booking/paystack/webhook
+  // Optional. Without it those events are ignored, as before.
+  PAYSTACK_FORWARD_URL: z.string().url().optional(),
   // Where Paystack sends the payer after checkout. Optional.
   PAYSTACK_CALLBACK_URL: z.string().url().optional(),
 });

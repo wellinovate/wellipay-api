@@ -6,6 +6,7 @@ import { toMinorNumber } from "../lib/money.js";
 import { fundingTotals } from "../lib/funding.js";
 import { mapPaystackChannel, verifyPaystackSignature } from "../lib/paystack.js";
 import { parseAuthorization } from "../lib/cards.js";
+import { forwardPaystackEvent, isForwardedReference } from "../lib/paystackForward.js";
 import { creditTopUp } from "../lib/walletTopUp.js";
 import type { Prisma } from "@prisma/client";
 
@@ -42,6 +43,14 @@ const paystackWebhookRoutes: FastifyPluginAsync = async (app) => {
     const reference = event.data?.reference;
     if (!reference || (event.event !== "charge.success" && event.event !== "charge.failed")) {
       return reply.code(200).send();
+    }
+
+    // Payments created by the WelliRecord mobile backend. Answer 502 if it did not
+    // take the event so Paystack retries; the receiver ignores repeats.
+    if (env.PAYSTACK_FORWARD_URL && isForwardedReference(reference) && typeof signature === "string") {
+      const ok = await forwardPaystackEvent(env.PAYSTACK_FORWARD_URL, raw, signature);
+      if (!ok) request.log.error({ reference }, "Could not hand the Paystack event to the WelliRecord backend");
+      return reply.code(ok ? 200 : 502).send();
     }
 
     const charge = await prisma.paystackCharge.findUnique({ where: { reference } });
