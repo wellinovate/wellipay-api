@@ -3,6 +3,7 @@ import { env } from "./env.js";
 import { prisma } from "./lib/prisma.js";
 import { startWebhookWorker } from "./worker.js";
 import { startReminderWorker } from "./lib/reminderWorker.js";
+import { clerkKeyWarning } from "./lib/clerk.js";
 
 async function main() {
   const app = buildApp();
@@ -24,6 +25,8 @@ async function main() {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
 
+  const clerkWarning = clerkKeyWarning(env.CLERK_SECRET_KEY, env.NODE_ENV === "production");
+  if (clerkWarning) app.log.warn(clerkWarning);
   await app.listen({ port: env.PORT, host: env.HOST });
 }
 

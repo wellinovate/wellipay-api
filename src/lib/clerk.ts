@@ -31,3 +31,12 @@ export async function verifyClerkToken(token: string): Promise<{ clerkUserId: st
   const payload = await verifyToken(token, { secretKey: env.CLERK_SECRET_KEY });
   return { clerkUserId: payload.sub };
 }
+
+/** A warning when a live service still holds a Clerk test key. Never includes the key. */
+export function clerkKeyWarning(secretKey: string | undefined, production: boolean): string | undefined {
+  if (!secretKey || !production) return undefined;
+  if (secretKey.startsWith("sk_test_")) {
+    return "CLERK_SECRET_KEY is a test key (sk_test_). Patients signing in with a live app key will be refused. Use the production instance's sk_live_ key.";
+  }
+  return undefined;
+}
