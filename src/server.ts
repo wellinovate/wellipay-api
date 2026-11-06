@@ -3,6 +3,7 @@ import { env } from "./env.js";
 import { prisma } from "./lib/prisma.js";
 import { startWebhookWorker } from "./worker.js";
 import { startReminderWorker } from "./lib/reminderWorker.js";
+import { launchWarnings } from "./lib/launchChecks.js";
 
 async function main() {
   const app = buildApp();
@@ -24,6 +25,7 @@ async function main() {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
 
+  for (const w of launchWarnings(env)) app.log.warn(w);
   await app.listen({ port: env.PORT, host: env.HOST });
 }
 
