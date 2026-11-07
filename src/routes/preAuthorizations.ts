@@ -172,12 +172,26 @@ const preAuthorizationRoutes: FastifyPluginAsync = async (app) => {
         return sendProblem(reply, problems.notFound());
       }
 
+      // Amounts come from the HMO's answer, entered by staff. Without one an
+      // approval would show 0 covered and 0 to pay, which says nothing true.
+      const coveredAmountMinor = body.coveredAmountMinor !== undefined ? toMinorBigInt(body.coveredAmountMinor) : undefined;
+      if (coveredAmountMinor !== undefined && coveredAmountMinor > existing.estimatedCostMinor) {
+        return sendProblem(reply, problems.unprocessable("The covered amount cannot be more than the estimate.", "covered_exceeds_estimate"));
+      }
+      if (body.status === "APPROVED" && coveredAmountMinor === undefined && existing.coveredAmountMinor === 0n) {
+        return sendProblem(reply, problems.unprocessable("Enter the amount the HMO covers before approving.", "approved_needs_amount"));
+      }
+
       const updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const row = await tx.preAuthorization.update({
           where: { id: existing.id },
           data: {
             ...(body.status !== undefined ? { status: body.status } : {}),
             ...(body.notes !== undefined ? { notes: body.notes } : {}),
+            ...(body.approvalCode !== undefined ? { approvalCode: body.approvalCode } : {}),
+            ...(coveredAmountMinor !== undefined
+              ? { coveredAmountMinor, patientPortionMinor: existing.estimatedCostMinor - coveredAmountMinor }
+              : {}),
           },
         });
         await queueEvent(tx, {
