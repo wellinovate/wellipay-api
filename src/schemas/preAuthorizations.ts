@@ -34,6 +34,10 @@ export const updatePreAuthSchema = z
   .object({
     status: z.enum(["APPROVED", "IN_REVIEW", "DECLINED"]).optional(),
     notes: z.string().max(500).optional(),
+    // What the HMO agreed to cover, in kobo. The patient portion is the estimate minus this.
+    coveredAmountMinor: z.number().int().min(0).optional(),
+    // The HMO's own approval reference, as given by the HMO. WelliPay does not issue these.
+    approvalCode: z.string().trim().min(1).max(40).optional(),
   })
   .refine((body) => Object.keys(body).length > 0, { message: "At least one field must be provided." });
 export type UpdatePreAuthInput = z.infer<typeof updatePreAuthSchema>;

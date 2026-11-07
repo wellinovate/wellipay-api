@@ -11,17 +11,8 @@ import { checkIdempotency, storeIdempotentResponse } from "../lib/idempotency.js
 import { queueEvent } from "../lib/webhooks.js";
 import { sendProblem, problems } from "../lib/problem.js";
 import { toMinorBigInt, toMinorNumber } from "../lib/money.js";
-
-// See the schema comment on PreAuthorization: no real payer integration
-// exists yet, so every request is resolved instantly by splitting the
-// estimate against the policy's own coPayPercent. Mirrors
-// eligibility.ts's simulateEligibilityDecision.
-function resolvePreAuth(estimatedCostMinor: bigint, coPayPercent: number) {
-  const patientPortionMinor = (estimatedCostMinor * BigInt(coPayPercent)) / 100n;
-  const coveredAmountMinor = estimatedCostMinor - patientPortionMinor;
-  const approvalCode = `AUTH-${Math.floor(1000 + Math.random() * 9000)}`;
-  return { patientPortionMinor, coveredAmountMinor, approvalCode };
-}
+import { env } from "../env.js";
+import { simulatedPreAuth } from "../lib/payerAdapter.js";
 
 function serializePreAuth(row: {
   id: string; patientRef: string; hmoPolicyId: string; facilityRef: string; procedure: string;
@@ -70,7 +61,12 @@ const preAuthorizationRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const estimatedCostMinor = toMinorBigInt(body.estimatedCostMinor);
-      const resolved = resolvePreAuth(estimatedCostMinor, policy.coPayPercent);
+      // No HMO integration exists yet, so by default the request goes to review
+      // and nothing is approved or priced on the HMO's behalf. Staff decide it
+      // with PATCH /provider/pre-authorizations/:id. The co-pay split and the
+      // made-up approval code run only when ALLOW_SIMULATED_HMO=true (development).
+      const simulated = env.ALLOW_SIMULATED_HMO === "true";
+      const resolved = simulated ? simulatedPreAuth(estimatedCostMinor, policy.coPayPercent) : null;
 
       const created = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const row = await tx.preAuthorization.create({
@@ -81,11 +77,15 @@ const preAuthorizationRoutes: FastifyPluginAsync = async (app) => {
             facilityRef: body.facilityRef,
             procedure: body.procedure,
             estimatedCostMinor,
-            coveredAmountMinor: resolved.coveredAmountMinor,
-            patientPortionMinor: resolved.patientPortionMinor,
+            // Amounts are not known until the HMO decides; 0 here means "not determined".
+            coveredAmountMinor: resolved ? resolved.coveredAmountMinor : 0n,
+            patientPortionMinor: resolved ? resolved.patientPortionMinor : 0n,
             currency: policy.currency,
-            approvalCode: resolved.approvalCode,
-            notes: `Pre-authorization approved by ${policy.provider}. Valid for 14 days.`,
+            status: resolved ? "APPROVED" : "IN_REVIEW",
+            approvalCode: resolved ? resolved.approvalCode : null,
+            notes: resolved
+              ? `Pre-authorization approved by ${policy.provider}. Valid for 14 days.`
+              : `Sent for review. ${policy.provider} has not confirmed this yet, so no amount is approved.`,
           },
         });
         await queueEvent(tx, {
@@ -172,12 +172,26 @@ const preAuthorizationRoutes: FastifyPluginAsync = async (app) => {
         return sendProblem(reply, problems.notFound());
       }
 
+      // Amounts come from the HMO's answer, entered by staff. Without one an
+      // approval would show 0 covered and 0 to pay, which says nothing true.
+      const coveredAmountMinor = body.coveredAmountMinor !== undefined ? toMinorBigInt(body.coveredAmountMinor) : undefined;
+      if (coveredAmountMinor !== undefined && coveredAmountMinor > existing.estimatedCostMinor) {
+        return sendProblem(reply, problems.unprocessable("The covered amount cannot be more than the estimate.", "covered_exceeds_estimate"));
+      }
+      if (body.status === "APPROVED" && coveredAmountMinor === undefined && existing.coveredAmountMinor === 0n) {
+        return sendProblem(reply, problems.unprocessable("Enter the amount the HMO covers before approving.", "approved_needs_amount"));
+      }
+
       const updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const row = await tx.preAuthorization.update({
           where: { id: existing.id },
           data: {
             ...(body.status !== undefined ? { status: body.status } : {}),
             ...(body.notes !== undefined ? { notes: body.notes } : {}),
+            ...(body.approvalCode !== undefined ? { approvalCode: body.approvalCode } : {}),
+            ...(coveredAmountMinor !== undefined
+              ? { coveredAmountMinor, patientPortionMinor: existing.estimatedCostMinor - coveredAmountMinor }
+              : {}),
           },
         });
         await queueEvent(tx, {

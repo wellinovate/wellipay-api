@@ -18,6 +18,10 @@ const schema = z.object({
   // with no login. Off by default: provider routes are reached through
   // POST /staff/login. Set to "true" only as a temporary bootstrap.
   ALLOW_PUBLIC_FRONTEND_TOKEN: z.enum(["true", "false"]).default("false"),
+  // No HMO integration exists yet. Off: an eligibility check or pre-authorization
+  // with no payer adapter is left pending for a person to decide. On: the old
+  // 80/20 stand-in invents the answer. Development only (see src/lib/payerAdapter.ts).
+  ALLOW_SIMULATED_HMO: z.enum(["true", "false"]).default("false"),
   // Credentials for the WelliPayPro frontend's own token proxy
   // (POST /public/frontend-token). Held server-side only — the browser
   // never sees a client_secret. Must match a seeded ApiCredential's
